@@ -1,4 +1,4 @@
-# Camper Trailer Inspector
+# RV Inspect
 
 A mobile-friendly progressive web app (PWA) for conducting pre-purchase inspections of camper trailers and RVs. Name each checklist to match the unit you're inspecting.
 
