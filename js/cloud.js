@@ -597,8 +597,9 @@ function generateCode() {
 
 async function generatePairingCode() {
   if (!supabaseClient || !currentUser) return;
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session?.refresh_token) { showToast('Session error. Try signing out and back in.', true); return; }
+  // Refresh session to get a fresh, unused refresh token (Supabase rotates tokens on use)
+  const { data: { session }, error: refreshError } = await supabaseClient.auth.refreshSession();
+  if (refreshError || !session?.refresh_token) { showToast('Session error. Try signing out and back in.', true); return; }
 
   // Delete any existing unclaimed codes for this user
   await supabaseClient.from('device_links').delete()
