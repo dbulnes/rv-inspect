@@ -925,7 +925,7 @@ async function exportPDF() {
             blob = rawBlob.type === 'application/pdf' ? rawBlob : new Blob([rawBlob], { type: 'application/pdf' });
           }
           downloadBlob(blob, filename);
-          showToast(pdfUrl ? 'PDF saved and downloaded' : 'PDF downloaded');
+          showToast(pdfUrl ? 'PDF generated and saved' : 'PDF generated');
           return;
         }
         console.error('PDF generation failed:', resp.status, await resp.text());
