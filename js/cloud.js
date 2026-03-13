@@ -763,16 +763,23 @@ function scanPairQR() {
       const img = new Image();
       img.src = URL.createObjectURL(file);
       await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(img.src);
 
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, canvas.width, canvas.height);
+      // Try multiple downscaled sizes — mobile photos are often 4000px+
+      // and jsQR works better at moderate resolutions
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const sizes = [800, 1200, 400];
+      let code = null;
+      for (const maxDim of sizes) {
+        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        canvas.width = Math.round(img.naturalWidth * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        code = jsQR(imageData.data, canvas.width, canvas.height);
+        if (code) break;
+      }
 
       if (!code) {
         showCloudMsg(msgEl, 'No QR code found in image. Try a clearer photo.', true);
