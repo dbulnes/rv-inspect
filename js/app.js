@@ -347,9 +347,9 @@ document.getElementById('photoInput').addEventListener('change', async function(
     const idx = photos.length;
     const tx = db.transaction('photos', 'readwrite');
     tx.objectStore('photos').put(dataUrl, `${pendingPhotoKey}_${idx}`);
-    tx.oncomplete = () => {
+    tx.oncomplete = async () => {
       renderThumbs(pendingPhotoKey);
-      pushPhotoToCloud(pendingPhotoKey, idx, dataUrl);
+      await pushPhotoToCloud(pendingPhotoKey, idx, dataUrl);
       autoSave(); // triggers cloud sync so other devices pull the new photo
     };
   } catch (e) { console.error('Photo capture error:', e); }
@@ -407,16 +407,15 @@ function closeLightbox(e) {
 
 async function deleteLightboxPhoto() {
   if (lightboxKey === null || lightboxIdx === null) return;
-  if (!await appConfirm('Delete this photo?')) return;
   const db = await openPhotoDB();
   const tx = db.transaction('photos', 'readwrite');
   tx.objectStore('photos').delete(`${lightboxKey}_${lightboxIdx}`);
   const delKey = lightboxKey, delIdx = lightboxIdx;
-  tx.oncomplete = () => {
+  tx.oncomplete = async () => {
     renderThumbs(delKey);
-    deletePhotoFromCloud(delKey, delIdx);
-    autoSave(); // triggers cloud sync so other devices see the deletion
     closeLightbox();
+    await deletePhotoFromCloud(delKey, delIdx);
+    autoSave(); // triggers cloud sync so other devices see the deletion
   };
 }
 
@@ -443,9 +442,9 @@ async function loadAllThumbs() {
 // IndexedDB remains the local cache; cloud sync happens in the background.
 // Data URLs are converted to Blobs for upload and back for download.
 
-// Encode current save name for use as a Storage folder path
+// Current save name as Storage folder path (no encoding — Supabase client handles it)
 function inspectionFolder() {
-  return encodeURIComponent(currentSaveName || '__autosave__');
+  return currentSaveName || '__autosave__';
 }
 
 function photoStoragePath(itemKey, idx) {
@@ -501,11 +500,24 @@ async function pullPhotosFromCloud() {
     const { data: files, error } = await supabaseClient.storage
       .from('inspection-photos').list(folder);
     if (error) throw error;
-    if (!files || files.length === 0) return;
+
+    // Build set of cloud photo keys (e.g. "exterior_0_0")
+    const cloudKeys = new Set();
+    const validFiles = [];
+    if (files) {
+      for (const file of files) {
+        if (!file.name.endsWith('.jpg')) continue;
+        const { itemKey, idx } = parsePhotoKey(file.name.replace(/\.jpg$/, ''));
+        cloudKeys.add(`${itemKey}_${idx}`);
+        validFiles.push(file);
+      }
+    }
 
     const db = await openPhotoDB();
     const keysToRender = new Set();
-    for (const file of files) {
+
+    // Download new photos from cloud
+    for (const file of validFiles) {
       const { itemKey, idx } = parsePhotoKey(file.name.replace(/\.jpg$/, ''));
       const dbKey = `${itemKey}_${idx}`;
 
@@ -531,6 +543,26 @@ async function pullPhotosFromCloud() {
       tx.objectStore('photos').put(dataUrl, dbKey);
       keysToRender.add(itemKey);
     }
+
+    // Remove local photos that no longer exist in cloud
+    await new Promise(resolve => {
+      const tx = db.transaction('photos', 'readwrite');
+      const store = tx.objectStore('photos');
+      const req = store.openCursor();
+      req.onsuccess = e => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (!cloudKeys.has(cursor.key)) {
+            const { itemKey } = parsePhotoKey(cursor.key);
+            store.delete(cursor.key);
+            keysToRender.add(itemKey);
+          }
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = resolve;
+    });
+
     keysToRender.forEach(k => renderThumbs(k));
   } catch (e) { console.error('Photo cloud pull error:', e); }
 }
