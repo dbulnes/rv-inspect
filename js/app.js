@@ -516,19 +516,18 @@ async function pullPhotosFromCloud() {
     const db = await openPhotoDB();
     const keysToRender = new Set();
 
-    // Download new photos from cloud
+    // Track cloud file timestamps so we re-download when a file is replaced
+    const tsKey = 'rv_inspect_photo_ts';
+    const photoTs = JSON.parse(localStorage.getItem(tsKey) || '{}');
+
+    // Download new or updated photos from cloud
     for (const file of validFiles) {
       const { itemKey, idx } = parsePhotoKey(file.name.replace(/\.jpg$/, ''));
       const dbKey = `${itemKey}_${idx}`;
+      const cloudUpdated = file.updated_at || file.created_at || '';
 
-      // Skip if already cached locally
-      const existing = await new Promise(r => {
-        const tx = db.transaction('photos', 'readonly');
-        const req = tx.objectStore('photos').get(dbKey);
-        req.onsuccess = () => r(req.result);
-        req.onerror = () => r(null);
-      });
-      if (existing) continue;
+      // Skip if already cached AND cloud file hasn't changed
+      if (photoTs[dbKey] === cloudUpdated) continue;
 
       // Download and cache
       const { data: blob, error: dlErr } = await supabaseClient.storage
@@ -541,8 +540,15 @@ async function pullPhotosFromCloud() {
       });
       const tx = db.transaction('photos', 'readwrite');
       tx.objectStore('photos').put(dataUrl, dbKey);
+      photoTs[dbKey] = cloudUpdated;
       keysToRender.add(itemKey);
     }
+
+    // Clean up timestamps for deleted photos
+    for (const key of Object.keys(photoTs)) {
+      if (!cloudKeys.has(key)) delete photoTs[key];
+    }
+    localStorage.setItem(tsKey, JSON.stringify(photoTs));
 
     // Remove local photos that no longer exist in cloud
     await new Promise(resolve => {
