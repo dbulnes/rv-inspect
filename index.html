@@ -423,7 +423,10 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
     <label>Estimated Repair Costs</label>
     <input type="text" data-summary="repairCosts" placeholder="$">
   </div>
-  <button class="btn btn-accent" style="width:100%;justify-content:center;margin-top:16px;padding:12px" onclick="exportSummary()">📤 Export Summary as Text</button>
+  <div style="display:flex;gap:8px;margin-top:16px">
+    <button class="btn btn-accent" style="flex:1;justify-content:center;padding:12px" onclick="exportPDF()">📄 Export PDF</button>
+    <button class="btn" style="flex:1;justify-content:center;padding:12px" onclick="exportMarkdown()">📝 Export Markdown</button>
+  </div>
 </div>
 
 <!-- Save/Load Modal -->

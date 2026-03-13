@@ -640,93 +640,250 @@ function setRadio(field, value, el) {
   autoSave();
 }
 
-function exportSummary() {
-  const summaryTitle = (state.info.name || 'RV INSPECTION').toUpperCase();
-  let text = `=== ${summaryTitle} SUMMARY ===\n\n`;
-
-  // Info
+// Gather all inspection data into a structured object for export
+function gatherExportData() {
   const info = state.info;
-  if (info.date) text += `Date: ${info.date}\n`;
-  if (info.location) text += `Location: ${info.location}\n`;
-  if (info.seller) text += `Seller: ${info.seller}\n`;
-  if (info.price) text += `Asking Price: ${info.price}\n`;
-  if (info.vin) text += `VIN: ${info.vin}\n`;
-  if (info.mileage) text += `Mileage: ${info.mileage}\n`;
-  text += '\n';
-
-  // Stats
-  let ok = 0, issues = 0, pending = 0;
+  let ok = 0, issues = 0, pending = 0, na = 0;
   SECTIONS.forEach(s => s.items.forEach((_, i) => {
     const st = state.checks[`${s.id}_${i}`] || 'unchecked';
     if (st === 'ok') ok++;
     else if (st === 'issue') issues++;
-    else if (st === 'unchecked') pending++;
+    else if (st === 'na') na++;
+    else pending++;
   }));
-  text += `RESULTS: ${ok} passed | ${issues} issues | ${pending} pending\n\n`;
 
-  // Issues by section
-  const issuesBySection = {};
-  SECTIONS.forEach(s => s.items.forEach((item, i) => {
-    const key = `${s.id}_${i}`;
-    if (state.checks[key] === 'issue') {
-      if (!issuesBySection[s.title]) issuesBySection[s.title] = [];
-      const t = typeof item === 'object' ? item.text : item;
+  const sections = SECTIONS.map(s => {
+    const items = s.items.map((item, i) => {
+      const key = `${s.id}_${i}`;
+      const text = typeof item === 'object' ? item.text : item;
+      const status = state.checks[key] || 'unchecked';
       const note = state.notes[key] || '';
-      issuesBySection[s.title].push(t + (note ? ` — ${note}` : ''));
-    }
-  }));
+      const input = state.inputs[key] || '';
+      const critical = typeof item === 'object' && item.critical;
+      return { key, text, status, note, input, critical };
+    });
+    return { id: s.id, title: s.title, items };
+  });
 
-  if (Object.keys(issuesBySection).length) {
-    text += '--- ISSUES FOUND ---\n';
-    for (const [sec, items] of Object.entries(issuesBySection)) {
-      text += `\n${sec}:\n`;
-      items.forEach(i => text += `  ✗ ${i}\n`);
+  return { info, stats: { ok, issues, pending, na }, sections, summary: state.summary };
+}
+
+// Status symbols for text/markdown
+function statusSymbol(s) {
+  return s === 'ok' ? '✓' : s === 'issue' ? '✗' : s === 'na' ? '—' : '○';
+}
+
+// ---- MARKDOWN EXPORT (no photos) ----
+function exportMarkdown() {
+  const d = gatherExportData();
+  const title = d.info.name || 'RV Inspection';
+  let md = `# ${title}\n\n`;
+
+  // Info
+  const fields = [
+    ['Date', d.info.date], ['Location', d.info.location], ['Seller', d.info.seller],
+    ['Asking Price', d.info.price], ['VIN', d.info.vin], ['Mileage', d.info.mileage]
+  ];
+  const infoLines = fields.filter(f => f[1]).map(f => `**${f[0]}:** ${f[1]}`);
+  if (infoLines.length) md += infoLines.join('  \n') + '\n\n';
+
+  // Stats
+  md += `> **${d.stats.ok}** passed · **${d.stats.issues}** issues · **${d.stats.pending}** pending · **${d.stats.na}** N/A\n\n`;
+
+  // Issues summary
+  const issueSections = d.sections.filter(s => s.items.some(it => it.status === 'issue'));
+  if (issueSections.length) {
+    md += '## Issues Found\n\n';
+    for (const s of issueSections) {
+      md += `### ${s.title}\n`;
+      for (const it of s.items.filter(it => it.status === 'issue')) {
+        md += `- ${it.critical ? '🔴 ' : ''}${it.text}`;
+        if (it.note) md += ` — *${it.note}*`;
+        if (it.input) md += ` (${it.input})`;
+        md += '\n';
+      }
+      md += '\n';
     }
-    text += '\n';
   }
 
-  // Notes
-  const allNotes = [];
-  SECTIONS.forEach(s => s.items.forEach((item, i) => {
-    const key = `${s.id}_${i}`;
-    if (state.notes[key]) {
-      const t = typeof item === 'object' ? item.text : item;
-      allNotes.push({ section: s.title, text: t, note: state.notes[key] });
+  // Full checklist
+  md += '## Full Checklist\n\n';
+  for (const s of d.sections) {
+    md += `### ${s.title}\n`;
+    for (const it of s.items) {
+      md += `- [${it.status === 'ok' ? 'x' : ' '}] ${statusSymbol(it.status)} ${it.critical ? '🔴 ' : ''}${it.text}`;
+      if (it.input) md += ` — ${it.input}`;
+      if (it.note) md += ` — *${it.note}*`;
+      md += '\n';
     }
-    if (state.inputs[key]) {
-      const t = typeof item === 'object' ? item.text : item;
-      allNotes.push({ section: s.title, text: t, note: state.inputs[key] });
-    }
-  }));
-
-  if (allNotes.length) {
-    text += '--- NOTES & MEASUREMENTS ---\n';
-    allNotes.forEach(n => text += `${n.section} > ${n.text}: ${n.note}\n`);
-    text += '\n';
+    md += '\n';
   }
 
   // Summary fields
-  if (state.summary.condition) text += `Overall Condition: ${state.summary.condition}\n`;
-  if (state.summary.action) text += `Recommended Action: ${state.summary.action}\n`;
-  if (state.summary.majorIssues) text += `Major Issues: ${state.summary.majorIssues}\n`;
-  if (state.summary.minorIssues) text += `Minor Issues: ${state.summary.minorIssues}\n`;
-  if (state.summary.repairCosts) text += `Estimated Repair Costs: ${state.summary.repairCosts}\n`;
-
-  // Copy or share
-  if (navigator.share) {
-    navigator.share({ title: 'RV Inspection Summary', text }).catch(() => copyText(text));
-  } else {
-    copyText(text);
+  const sf = d.summary;
+  if (sf.condition || sf.action || sf.majorIssues || sf.minorIssues || sf.repairCosts) {
+    md += '## Assessment\n\n';
+    if (sf.condition) md += `**Overall Condition:** ${sf.condition}  \n`;
+    if (sf.action) md += `**Recommended Action:** ${sf.action}  \n`;
+    if (sf.majorIssues) md += `**Major Issues:** ${sf.majorIssues}  \n`;
+    if (sf.minorIssues) md += `**Minor Issues:** ${sf.minorIssues}  \n`;
+    if (sf.repairCosts) md += `**Estimated Repair Costs:** ${sf.repairCosts}  \n`;
   }
+
+  const filename = (title.replace(/[^a-zA-Z0-9 _-]/g, '') || 'inspection') + '.md';
+  downloadBlob(new Blob([md], { type: 'text/markdown' }), filename);
+  showToast('Markdown exported');
 }
 
-function copyText(text) {
-  navigator.clipboard.writeText(text).then(() => showToast('Summary copied to clipboard!')).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-    showToast('Summary copied to clipboard!');
-  });
+// ---- PDF EXPORT (with photos) ----
+async function exportPDF() {
+  showToast('Generating PDF…', false, 10000);
+  const d = gatherExportData();
+  const title = d.info.name || 'RV Inspection';
+
+  // Collect all photos grouped by item key
+  const photoMap = {};
+  try {
+    const db = await openPhotoDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('photos', 'readonly');
+      const req = tx.objectStore('photos').openCursor();
+      req.onsuccess = e => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const parts = cursor.key.split('_');
+          parts.pop(); // remove index
+          const itemKey = parts.join('_');
+          if (!photoMap[itemKey]) photoMap[itemKey] = [];
+          photoMap[itemKey].push(cursor.value);
+          cursor.continue();
+        } else resolve();
+      };
+      req.onerror = () => resolve();
+    });
+  } catch (e) { /* no photos, that's fine */ }
+
+  // Build HTML document for printing to PDF
+  const statusLabel = s => s === 'ok' ? '✓ OK' : s === 'issue' ? '✗ ISSUE' : s === 'na' ? '— N/A' : '○ Pending';
+  const statusColor = s => s === 'ok' ? '#4caf50' : s === 'issue' ? '#ff5252' : s === 'na' ? '#888' : '#aaa';
+
+  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; color: #222; padding: 20px; max-width: 800px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .info { color: #555; margin-bottom: 12px; line-height: 1.6; }
+  .stats { display: flex; gap: 16px; margin: 12px 0; font-weight: 600; font-size: 13px; }
+  .stat-ok { color: #4caf50; } .stat-issue { color: #ff5252; } .stat-pending { color: #888; }
+  h2 { font-size: 14px; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 2px solid #333; }
+  h3 { font-size: 12px; margin: 10px 0 4px; color: #444; }
+  .item { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; page-break-inside: avoid; }
+  .item-status { font-weight: 700; min-width: 18px; text-align: center; }
+  .item-text { flex: 1; }
+  .item-note { color: #555; font-style: italic; }
+  .critical { font-weight: 700; }
+  .critical::before { content: "🔴 "; }
+  .photos { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px 24px; }
+  .photos img { width: 120px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
+  .assessment { margin-top: 16px; padding: 10px; background: #f5f5f5; border-radius: 6px; }
+  .assessment p { margin: 3px 0; }
+  .section-block { page-break-inside: avoid; }
+  @media print { body { padding: 0; } }
+</style></head><body>`;
+
+  html += `<h1>${escHtml(title)}</h1>`;
+
+  // Info line
+  const infoItems = [];
+  if (d.info.date) infoItems.push(d.info.date);
+  if (d.info.location) infoItems.push(d.info.location);
+  if (d.info.seller) infoItems.push('Seller: ' + d.info.seller);
+  if (d.info.price) infoItems.push('Price: ' + d.info.price);
+  if (d.info.vin) infoItems.push('VIN: ' + d.info.vin);
+  if (d.info.mileage) infoItems.push('Mileage: ' + d.info.mileage);
+  if (infoItems.length) html += `<div class="info">${infoItems.map(escHtml).join(' · ')}</div>`;
+
+  // Stats bar
+  html += `<div class="stats">
+    <span class="stat-ok">✓ ${d.stats.ok} passed</span>
+    <span class="stat-issue">✗ ${d.stats.issues} issues</span>
+    <span class="stat-pending">○ ${d.stats.pending} pending</span>
+  </div>`;
+
+  // Issues summary
+  const issueSections = d.sections.filter(s => s.items.some(it => it.status === 'issue'));
+  if (issueSections.length) {
+    html += '<h2>Issues Found</h2>';
+    for (const s of issueSections) {
+      html += `<h3>${escHtml(s.title)}</h3>`;
+      for (const it of s.items.filter(it => it.status === 'issue')) {
+        html += `<div class="item">
+          <span class="item-status" style="color:${statusColor('issue')}">✗</span>
+          <span class="item-text${it.critical ? ' critical' : ''}">${escHtml(it.text)}`;
+        if (it.note) html += ` <span class="item-note">— ${escHtml(it.note)}</span>`;
+        if (it.input) html += ` <span class="item-note">(${escHtml(it.input)})</span>`;
+        html += '</span></div>';
+        if (photoMap[it.key]?.length) {
+          html += '<div class="photos">' + photoMap[it.key].map(src => `<img src="${src}">`).join('') + '</div>';
+        }
+      }
+    }
+  }
+
+  // Full checklist with photos
+  html += '<h2>Full Checklist</h2>';
+  for (const s of d.sections) {
+    html += `<div class="section-block"><h3>${escHtml(s.title)}</h3>`;
+    for (const it of s.items) {
+      html += `<div class="item">
+        <span class="item-status" style="color:${statusColor(it.status)}">${statusSymbol(it.status)}</span>
+        <span class="item-text${it.critical ? ' critical' : ''}">${escHtml(it.text)}`;
+      if (it.input) html += ` <span class="item-note">— ${escHtml(it.input)}</span>`;
+      if (it.note) html += ` <span class="item-note">— ${escHtml(it.note)}</span>`;
+      html += '</span></div>';
+      if (photoMap[it.key]?.length) {
+        html += '<div class="photos">' + photoMap[it.key].map(src => `<img src="${src}">`).join('') + '</div>';
+      }
+    }
+    html += '</div>';
+  }
+
+  // Assessment
+  const sf = d.summary;
+  if (sf.condition || sf.action || sf.majorIssues || sf.minorIssues || sf.repairCosts) {
+    html += '<div class="assessment"><h2 style="border:0;margin:0 0 6px">Assessment</h2>';
+    if (sf.condition) html += `<p><strong>Overall Condition:</strong> ${escHtml(sf.condition)}</p>`;
+    if (sf.action) html += `<p><strong>Recommended Action:</strong> ${escHtml(sf.action)}</p>`;
+    if (sf.majorIssues) html += `<p><strong>Major Issues:</strong> ${escHtml(sf.majorIssues)}</p>`;
+    if (sf.minorIssues) html += `<p><strong>Minor Issues:</strong> ${escHtml(sf.minorIssues)}</p>`;
+    if (sf.repairCosts) html += `<p><strong>Estimated Repair Costs:</strong> ${escHtml(sf.repairCosts)}</p>`;
+    html += '</div>';
+  }
+
+  html += '</body></html>';
+
+  // Open print dialog in a new window — this produces a PDF on all platforms
+  const printWin = window.open('', '_blank');
+  if (!printWin) { showToast('Please allow popups to export PDF', true); return; }
+  printWin.document.write(html);
+  printWin.document.close();
+  // Wait for images to load before triggering print
+  const images = printWin.document.querySelectorAll('img');
+  const loaded = images.length ? Promise.all(Array.from(images).map(img =>
+    img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
+  )) : Promise.resolve();
+  await loaded;
+  showToast('Opening print dialog…', false, 3000);
+  printWin.print();
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ====== VIEW SWITCHING ======
