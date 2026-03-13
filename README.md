@@ -6,6 +6,8 @@ A mobile-friendly progressive web app (PWA) for conducting pre-purchase inspecti
 
 - **23 inspection sections** covering exterior, interior, plumbing, electrical, propane, appliances, and more
 - **Custom checklist name** — name each inspection (e.g. "2021 Micro Minnie 1708FB")
+- **Photo attachments** — attach photos to any checklist item via camera or gallery, stored in IndexedDB
+- **VIN barcode scanner** — scan the VIN barcode with your phone camera (uses BarcodeDetector API)
 - **Tap to cycle** each item: unchecked → ✓ pass → ✗ issue → — N/A
 - **Notes and measurements** on any item (temperatures, voltages, tire pressures, etc.)
 - **Auto-save** — progress saves automatically to your device and to the current named save

@@ -13,20 +13,23 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
-A service worker (`service-worker.js`) caches assets for offline use. **Bump `CACHE_NAME` in `service-worker.js`** whenever you change `index.html` or `manifest.json`, otherwise returning users will see stale cached versions.
+A service worker (`service-worker.js`) caches assets for offline use. **Bump `CACHE_NAME` in `service-worker.js`** whenever you change `index.html`, `app.js`, or `manifest.json`, otherwise returning users will see stale cached versions.
 
 ## Architecture
 
-Everything lives in a single `index.html` file with inline CSS and JS:
+`index.html` contains the markup and CSS, `app.js` contains all JavaScript:
 
-- **CSS** (top of file): Dark theme with CSS custom properties in `:root`. Uses `env(safe-area-inset-*)` for iOS notch/home-bar safe areas.
-- **`SECTIONS` array** (in `<script>`): The checklist data model — 23 sections, each with items that can be plain strings or objects with `{text, critical, input, inputLabel}` properties. This is the source of truth for all checklist content.
+- **CSS** (`index.html`): Dark theme with CSS custom properties in `:root`. Uses `env(safe-area-inset-*)` for iOS notch/home-bar safe areas.
+- **`SECTIONS` array** (`app.js`): The checklist data model — 23 sections, each with items that can be plain strings or objects with `{text, critical, input, inputLabel}` properties. This is the source of truth for all checklist content.
 - **State object**: `{ info, checks, notes, inputs, summary }` — serialized to localStorage for auto-save and named saves.
+- **Photos**: Stored in IndexedDB (`rv_inspect_photos`), keyed by item key + index. Resized to max 1200px JPEG before storing.
+- **VIN scanner**: Uses the `BarcodeDetector` API (Code 39/128) to scan VIN barcodes via device camera.
 - **Check cycle**: Each item cycles through `unchecked → ok → issue → na` on tap.
 - **Two views**: Checklist (main) and Summary, switched via bottom nav tabs.
 - **Save/load modal**: Named saves stored under `rv_inspect_saves` localStorage key; auto-save under `rv_inspect_autosave`.
 
 Supporting files:
+- `app.js` — All application JavaScript (checklist data, state, rendering, interactions, save/load, cloud sync, photos, VIN scanner)
 - `manifest.json` — PWA manifest for home screen install
 - `service-worker.js` — Service worker with cache-first and network-first strategies
 - `Micro Minnie Inspection Checklist.pdf` — Source PDF the original checklist was derived from
