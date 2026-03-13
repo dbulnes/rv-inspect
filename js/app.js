@@ -350,6 +350,7 @@ document.getElementById('photoInput').addEventListener('change', async function(
     tx.oncomplete = () => {
       renderThumbs(pendingPhotoKey);
       pushPhotoToCloud(pendingPhotoKey, idx, dataUrl);
+      autoSave(); // triggers cloud sync so other devices pull the new photo
     };
   } catch (e) { console.error('Photo capture error:', e); }
   this.value = '';
@@ -414,6 +415,7 @@ async function deleteLightboxPhoto() {
   tx.oncomplete = () => {
     renderThumbs(delKey);
     deletePhotoFromCloud(delKey, delIdx);
+    autoSave(); // triggers cloud sync so other devices see the deletion
     closeLightbox();
   };
 }

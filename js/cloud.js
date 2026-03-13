@@ -424,13 +424,11 @@ function subscribeRealtime() {
     }, (payload) => {
       const row = payload.new;
       if (!row || !row.name || !row.state) return;
-      // Ignore echoes of our own push (same device, within debounce window)
-      if (row.name === currentSaveName && debounceTimer) return;
+      // Ignore echoes of our own push
+      if (row.state._deviceId === DEVICE_ID) return;
       const cloudTs = new Date(row.updated_at).getTime();
       const saves = getSaves();
       const local = saves[row.name];
-      const localTs = local?.ts || 0;
-      if (cloudTs <= localTs) return; // Local is already up-to-date
       // Accept cloud state, merging attributions from both sides
       const merged = mergeByAttribution(row.state, local?.data);
       saves[row.name] = { data: merged, ts: cloudTs };
@@ -455,6 +453,13 @@ function unsubscribeRealtime() {
     realtimeChannel = null;
   }
 }
+
+// Device ID for echo detection — distinguishes this device's pushes from remote ones
+const DEVICE_ID = localStorage.getItem('rv_inspect_device_id') || (() => {
+  const id = crypto.randomUUID();
+  localStorage.setItem('rv_inspect_device_id', id);
+  return id;
+})();
 
 // Sync
 let debounceTimer = null;
@@ -535,7 +540,7 @@ async function cloudSyncNow() {
     // Push all local-newer saves in parallel (simple upserts, no pre-check needed)
     await Promise.all(toPush.map(({ name, data }) =>
       supabaseClient.from('inspections').upsert({
-        user_id: currentUser.id, name, state: data
+        user_id: currentUser.id, name, state: { ...data, _deviceId: DEVICE_ID }
       }, { onConflict: 'user_id,name' }).catch(e => console.error('Push error:', name, e))
     ));
 
@@ -583,7 +588,7 @@ async function pushSaveToCloud(name, data) {
     await supabaseClient.from('inspections').upsert({
       user_id: currentUser.id,
       name: name,
-      state: data
+      state: { ...data, _deviceId: DEVICE_ID }
     }, { onConflict: 'user_id,name' });
   } catch (e) { console.error('Cloud push error:', e); }
 }
@@ -622,7 +627,7 @@ async function reconcileOnLoad() {
       for (const [name, save] of Object.entries(localSaves)) {
         if (!cloudSaves.find(cs => cs.name === name)) {
           supabaseClient.from('inspections').upsert({
-            user_id: currentUser.id, name, state: save.data
+            user_id: currentUser.id, name, state: { ...save.data, _deviceId: DEVICE_ID }
           }, { onConflict: 'user_id,name' }).catch(e => console.error('Push error:', name, e));
         }
       }
