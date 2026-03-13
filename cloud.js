@@ -634,6 +634,7 @@ async function cancelDeviceLink() {
 
 // Claim a pairing URL — used by QR scan, QR upload, and ?pair= URL param
 async function claimPairURL(pairUrl) {
+  showCloudModal();
   const msgEl = document.getElementById('pairClaimMsg');
   try {
     const url = new URL(pairUrl);
@@ -646,7 +647,10 @@ async function claimPairURL(pairUrl) {
     if (sbUrl && sbKey && !loadBYOConfig()) {
       localStorage.setItem(BYO_CONFIG_KEY, JSON.stringify({ url: sbUrl, key: sbKey }));
       initSupabase();
-      await new Promise(r => setTimeout(r, 500));
+      // Wait for supabaseClient to be ready (up to 3s)
+      for (let i = 0; i < 30 && !supabaseClient; i++) {
+        await new Promise(r => setTimeout(r, 100));
+      }
     }
 
     if (!supabaseClient) {
@@ -655,7 +659,6 @@ async function claimPairURL(pairUrl) {
     }
 
     showCloudMsg(msgEl, 'Linking...', false);
-    showCloudModal();
 
     const { data, error } = await supabaseClient.from('device_links')
       .select('refresh_token,user_id,can_pair').eq('code', code.toUpperCase().replace(/[-\s]/g, '')).single();
@@ -753,13 +756,7 @@ function loadQRLibrary() {
 function renderQRCode(code) {
   if (typeof qrcode === 'undefined') return;
   const container = document.getElementById('pairQR');
-  const baseUrl = window.location.href.split('#')[0].split('?')[0];
-  const config = loadBYOConfig();
-  let url = baseUrl + '?pair=' + code;
-  // Include Supabase credentials so Device B auto-connects
-  if (config) {
-    url += '&sb_url=' + encodeURIComponent(config.url) + '&sb_key=' + encodeURIComponent(config.key);
-  }
+  const url = buildPairURL(code);
   const qr = qrcode(0, 'M');
   qr.addData(url);
   qr.make();
@@ -780,11 +777,11 @@ function handlePairParam() {
   const params = new URLSearchParams(window.location.search);
   if (!params.get('pair')) return;
   // Reconstruct the full URL for claimPairURL, then clean address bar
-  const fullUrl = window.location.href.split('#')[0];
+  const fullUrl = getBaseUrl() + window.location.search;
   history.replaceState(null, '', window.location.pathname);
   if (currentUser) { showToast('Already signed in'); return; }
-  // Wait for Supabase JS to load, then claim
-  setTimeout(() => claimPairURL(fullUrl), 500);
+  // claimPairURL handles Supabase init internally if needed
+  claimPairURL(fullUrl);
 }
 
 // Online/offline listeners
