@@ -297,7 +297,7 @@ async function ensureTable() {
   if (error && error.code === '42P01') {
     // Table doesn't exist — guide user to create it
     const msgEl = document.getElementById('byoMsg');
-    showCloudMsg(msgEl, 'Table "inspections" not found. Please run the SQL migration in your Supabase SQL Editor. See README for the schema.', true);
+    showCloudMsg(msgEl, 'Table "inspections" not found. Run setup.sql in your Supabase SQL Editor first.', true);
   }
 }
 

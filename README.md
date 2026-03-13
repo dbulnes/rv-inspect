@@ -40,110 +40,29 @@ You can optionally sync your inspections across devices using [Supabase](https:/
 ### Setup
 
 1. Create a free Supabase project at https://supabase.com
-2. In your Supabase dashboard, go to **SQL Editor** and run this migration:
-
-```sql
-create table inspections (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  name text not null,
-  state jsonb not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique(user_id, name)
-);
-
-alter table inspections enable row level security;
-
-create policy "Users CRUD own inspections" on inspections
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- Auto-update updated_at on changes
-create or replace function update_updated_at()
-returns trigger as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$ language plpgsql;
-
-create trigger inspections_updated_at
-  before update on inspections
-  for each row execute function update_updated_at();
-```
-
-3. **(Optional — for photo sync)** Run this to create the storage bucket for inspection photos:
-
-```sql
--- Create a private storage bucket for inspection photos
-insert into storage.buckets (id, name, public) values ('inspection-photos', 'inspection-photos', false);
-
--- RLS: users can only access photos in their own folder
-create policy "Users manage own photos" on storage.objects
-  for all using (bucket_id = 'inspection-photos' and auth.uid()::text = (storage.foldername(name))[1])
-  with check (bucket_id = 'inspection-photos' and auth.uid()::text = (storage.foldername(name))[1]);
-```
-
-4. In Supabase **Authentication > Settings**, make sure Email auth is enabled (magic link is on by default)
-5. In Supabase **Authentication > URL Configuration**:
+2. In your Supabase dashboard, go to **SQL Editor** and run the contents of [`setup.sql`](setup.sql) — this creates all tables, storage, and security policies in one step
+3. In Supabase **Authentication > Settings**, make sure Email auth is enabled (magic link is on by default)
+4. In Supabase **Authentication > URL Configuration**:
    - Set **Site URL** to your app URL (e.g. `https://yourusername.github.io/trailer-checklist/`)
    - Add the same URL to **Redirect URLs**
    - For local dev, also add `http://localhost:8080` to Redirect URLs
-6. Open the app, tap the **☁️ button**, expand **Supabase Setup**, and enter:
+5. Open the app, tap the **☁️ button**, expand **Supabase Setup**, and enter:
    - Your **Project URL** (e.g. `https://xyz.supabase.co`) — found in Settings > API
    - Your **Publishable key** (starts with `sb_publishable_...`) — found in Settings > API
-7. Click **Connect**, then sign in with your email via magic link
-8. Click the magic link in your email — you'll be redirected back to the app and signed in automatically
+6. Click **Connect**, then sign in with your email via magic link
+7. Click the magic link in your email — you'll be redirected back to the app and signed in automatically
 
 Your inspections will now sync across any device where you sign in.
 
 ### Device Pairing (Link Another Device)
 
-Instead of signing into email on every device, you can pair a second device using a short-lived code:
+Instead of signing into email on every device, you can pair a second device using a QR code:
 
-1. Run this migration in your Supabase **SQL Editor**:
-
-```sql
-create table device_links (
-  id uuid primary key default gen_random_uuid(),
-  code text not null unique,
-  refresh_token text not null,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null default (now() + interval '5 minutes'),
-  claimed boolean not null default false,
-  can_pair boolean not null default false
-);
-
-create index idx_device_links_code on device_links(code);
-alter table device_links enable row level security;
-
-create policy "Users create own device links" on device_links
-  for insert with check (auth.uid() = user_id);
-
-create policy "Anyone can read valid device link by code" on device_links
-  for select using (claimed = false and expires_at > now());
-
-create policy "Users update own device links" on device_links
-  for update using (auth.uid() = user_id);
-
-create or replace function cleanup_expired_device_links()
-returns trigger as $$
-begin
-  delete from device_links where expires_at < now();
-  return new;
-end;
-$$ language plpgsql;
-
-create trigger device_links_cleanup
-  after insert on device_links for each row execute function cleanup_expired_device_links();
-```
-
-2. On **Device A** (already signed in): tap ☁️ → **Link Another Device** → a code and QR are shown (valid for 5 minutes)
+1. On **Device A** (already signed in): tap ☁️ → **Link Another Device** → a QR code is shown (valid for 5 minutes)
    - Optionally check **"Allow linked device to pair others"** to let Device B generate its own pairing codes
-3. On **Device B**: scan the QR code (auto-configures Supabase + fills the code) or open the app → ☁️ → enter the code manually → tap **Link**
-4. Device B is now signed in as the same user — no email required
-5. By default, Device B **cannot** pair additional devices unless Device A granted that permission
+2. On **Device B**: tap ☁️ → **Scan QR Code** (camera) or **Upload QR Image** (screenshot) — this auto-configures Supabase and signs in
+3. Device B is now signed in as the same user — no email or manual setup required
+4. By default, Device B **cannot** pair additional devices unless Device A granted that permission
 
 ### How it works
 
