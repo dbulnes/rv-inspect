@@ -70,43 +70,43 @@ function handleNameChange(newName) {
   }, 1000);
 }
 
+function renderSaveSlots(saves) {
+  const keys = Object.keys(saves).sort((a,b) => (saves[b].ts || 0) - (saves[a].ts || 0));
+  if (keys.length === 0) {
+    return '<p style="color:var(--text2);font-size:.85rem;padding:8px 0">No saved inspections yet.</p>';
+  }
+  return keys.map(k => {
+    const s = saves[k];
+    const d = s.ts ? new Date(s.ts).toLocaleString() : '';
+    const encodedName = encodeURIComponent(k);
+    const isCurrent = k === currentSaveName;
+    return `
+      <div class="save-slot${isCurrent ? ' current' : ''}">
+        <div class="save-slot-name">${escHtml(k)}${isCurrent ? ' <span style="font-size:.65rem;color:var(--accent);font-weight:400">(current)</span>' : ''}</div>
+        <div class="save-slot-date">${d}</div>
+        <div class="save-slot-actions">
+          ${isCurrent ? '' : `<button class="save-slot-btn" data-action="load" data-name="${encodedName}">Load</button>`}
+          <button class="save-slot-btn delete" data-action="delete" data-name="${encodedName}">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 function showSaveModal() {
   const saves = getSaves();
   const slotsEl = document.getElementById('saveSlots');
-  const keys = Object.keys(saves).sort((a,b) => (saves[b].ts || 0) - (saves[a].ts || 0));
-
-  let html = '';
-  if (keys.length === 0) {
-    html = '<p style="color:var(--text2);font-size:.85rem;padding:8px 0">No saved inspections yet.</p>';
-  } else {
-    html += keys.map(k => {
-      const s = saves[k];
-      const d = s.ts ? new Date(s.ts).toLocaleString() : '';
-      const encodedName = encodeURIComponent(k);
-      const isCurrent = k === currentSaveName;
-      return `
-        <div class="save-slot${isCurrent ? ' current' : ''}">
-          <div class="save-slot-name">${escHtml(k)}${isCurrent ? ' <span style="font-size:.65rem;color:var(--accent);font-weight:400">(current)</span>' : ''}</div>
-          <div class="save-slot-date">${d}</div>
-          <div class="save-slot-actions">
-            ${isCurrent ? '' : `<button class="save-slot-btn" data-action="load" data-name="${encodedName}">Load</button>`}
-            <button class="save-slot-btn delete" data-action="delete" data-name="${encodedName}">Delete</button>
-          </div>
-        </div>`;
-    }).join('');
-  }
-
-  slotsEl.innerHTML = html;
+  slotsEl.innerHTML = renderSaveSlots(saves);
   document.getElementById('saveModal').classList.add('show');
 
   // Fetch cloud-only saves
+  const keys = Object.keys(saves);
   loadCloudSavesIntoModal(keys);
 }
 
-let _loadingCloudSaves = false;
+let _cloudFetchId = 0;
 async function loadCloudSavesIntoModal(localKeys) {
-  if (!supabaseClient || !currentUser || _loadingCloudSaves) return;
-  _loadingCloudSaves = true;
+  if (!supabaseClient || !currentUser) return;
+  const fetchId = ++_cloudFetchId;
 
   try {
     const { data, error } = await supabaseClient.from('inspections')
@@ -114,6 +114,9 @@ async function loadCloudSavesIntoModal(localKeys) {
       .eq('user_id', currentUser.id)
       .neq('name', '__autosave__')
       .order('updated_at', { ascending: false });
+
+    // A newer call superseded this one — bail
+    if (fetchId !== _cloudFetchId) return;
 
     if (error) throw error;
     if (!data || data.length === 0) return;
@@ -131,9 +134,8 @@ async function loadCloudSavesIntoModal(localKeys) {
     }
     if (pulled) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
-      // Re-render the modal with the unified list
-      showSaveModal();
-      return;
+      // Re-render the modal slots inline instead of recursive showSaveModal()
+      document.getElementById('saveSlots').innerHTML = renderSaveSlots(saves);
     }
 
     // Add cloud badge to saves that exist in cloud
@@ -148,8 +150,6 @@ async function loadCloudSavesIntoModal(localKeys) {
     });
   } catch (e) {
     console.error('Failed to load cloud saves:', e);
-  } finally {
-    _loadingCloudSaves = false;
   }
 }
 
@@ -191,9 +191,13 @@ function loadSave(name) {
 
 async function deleteSave(name) {
   if (!await appConfirm(`Delete "${name}"?`)) return;
+  // Close modal immediately for visual feedback
+  closeSaveModal();
+  // Delete from localStorage
   const saves = getSaves();
   delete saves[name];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+  // Fire-and-forget cloud delete
   deleteSaveFromCloud(name);
   // If we deleted the current save, start fresh
   if (name === currentSaveName) {
@@ -205,7 +209,7 @@ async function deleteSave(name) {
     loadInfoFields();
     SECTIONS.forEach(s => updateBadge(s.id));
   }
-  showSaveModal();
+  showToast(`Deleted "${name}"`);
 }
 
 async function resetAll() {
