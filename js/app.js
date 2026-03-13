@@ -167,7 +167,8 @@ function renderItem(sectionId, item, idx) {
 
   const byWho = state.by?.[key] || '';
   const multi = isMultiContributor();
-  const attrHtml = multi && byWho ? `<span class="attribution" id="attr_${key}">${escHtml(byWho)}</span>` : `<span class="attribution" id="attr_${key}"></span>`;
+  const showAttr = multi && byWho && checkState !== 'unchecked';
+  const attrHtml = showAttr ? `<span class="attribution" id="attr_${key}">${escHtml(byWho)}</span>` : `<span class="attribution" id="attr_${key}"></span>`;
 
   return `
     <div class="check-item ${isCritical && sectionId === 'red_flags' ? 'red-flag' : ''}">
@@ -226,16 +227,20 @@ function setNote(key, val) { state.notes[key] = val; stampBy(key); autoSave(); }
 function setInput(key, val) { state.inputs[key] = val; stampBy(key); autoSave(); }
 
 let _wasMulti = false;
+function attrText(key) {
+  const cs = state.checks[key] || 'unchecked';
+  return cs !== 'unchecked' && state.by?.[key] ? state.by[key] : '';
+}
 function updateAttribution(key) {
   const multi = isMultiContributor();
   const el = document.getElementById('attr_' + key);
-  if (el) el.textContent = multi && state.by?.[key] ? state.by[key] : '';
+  if (el) el.textContent = multi ? attrText(key) : '';
   // If we just crossed the threshold, refresh all attribution labels
   if (multi && !_wasMulti) {
     _wasMulti = true;
     document.querySelectorAll('.attribution').forEach(a => {
       const k = a.id.replace('attr_', '');
-      a.textContent = state.by?.[k] || '';
+      a.textContent = attrText(k);
     });
   } else if (!multi && _wasMulti) {
     _wasMulti = false;
@@ -272,7 +277,7 @@ function patchUI() {
         }
       }
       const attrEl = document.getElementById('attr_' + key);
-      if (attrEl) attrEl.textContent = _wasMulti && state.by?.[key] ? state.by[key] : '';
+      if (attrEl) attrEl.textContent = _wasMulti ? attrText(key) : '';
     });
     updateBadge(section.id);
   });
@@ -830,7 +835,7 @@ function gatherExportData() {
       const note = state.notes[key] || '';
       const input = state.inputs[key] || '';
       const critical = typeof item === 'object' && item.critical;
-      const by = state.by?.[key] || '';
+      const by = status !== 'unchecked' ? (state.by?.[key] || '') : '';
       return { key, text, status, note, input, critical, by };
     });
     return { id: s.id, title: s.title, items };
