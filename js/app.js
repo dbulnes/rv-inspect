@@ -1226,9 +1226,10 @@ async function exportPDF() {
 }
 
 async function downloadBlob(blob, filename) {
-  // iOS PWA: use Web Share API (native share sheet with "Save to Files")
+  // Mobile: use Web Share API (native share sheet with "Save to Files")
+  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
   const file = new File([blob], filename, { type: blob.type || 'application/pdf' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+  if (isMobile && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });
       return;
