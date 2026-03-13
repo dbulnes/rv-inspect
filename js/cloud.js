@@ -750,20 +750,7 @@ async function claimPairURL(pairUrl) {
   }
 }
 
-// QR code scanning via camera (Device B scans Device A's QR)
-function startPairQRScan() {
-  document.getElementById('cloudModal').classList.remove('show');
-  startScan(['qr_code'], 'Point camera at pairing QR code...', 'QR scanning not available. Try uploading a screenshot instead.', value => {
-    try {
-      const url = new URL(value);
-      if (!url.searchParams.get('pair')) return false;
-      claimPairURL(value);
-      return true;
-    } catch (e) { return false; }
-  });
-}
-
-// QR code upload from image file (screenshot, saved QR, etc.)
+// QR code capture (camera on mobile) or upload from file
 function uploadPairQR() {
   const fileInput = document.getElementById('pairQRFileInput');
   fileInput.value = '';

@@ -95,7 +95,7 @@ Instead of signing into email on every device, you can pair a second device usin
 
 1. On **Device A** (already signed in): tap ☁️ → **Link Another Device** → a QR code is shown (valid for 5 minutes)
    - Optionally check **"Allow linked device to pair others"** to let Device B generate its own pairing codes
-2. On **Device B**: tap ☁️ → **Scan QR Code** (camera) or **Upload QR Image** (screenshot) — this auto-configures Supabase and signs in
+2. On **Device B**: tap ☁️ → **Scan or Upload QR Code** (opens camera on mobile, file picker on desktop) — this auto-configures Supabase and signs in
 3. Device B is now signed in as the same user — no email or manual setup required
 4. By default, Device B **cannot** pair additional devices unless Device A granted that permission
 
