@@ -68,6 +68,12 @@ No `npm install` needed — tests use only Node.js built-in modules (no dependen
 
 Push to `main` triggers GitHub Actions: tests run first, then the site deploys to GitHub Pages.
 
+At deploy time, CI automatically:
+- Stamps `CACHE_NAME` in `service-worker.js` with a content hash of all cached files (ensures returning users get fresh assets)
+- Stamps `APP_VERSION` in `js/app.js` with the `package.json` version + git short hash (e.g. `1.0.0 (60dc5dd)`)
+
+The deployed version is visible in the app under **☁️ Cloud Sync → App Info**. You can cross-reference the commit hash with `git log` to know exactly what's deployed.
+
 ## Cloud Sync (Optional)
 
 You can optionally sync your inspections across devices using [Supabase](https://supabase.com) (free tier works fine).
