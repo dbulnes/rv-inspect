@@ -532,6 +532,17 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
   </div>
 </div>
 
+<div class="confirm-overlay" id="promptOverlay">
+  <div class="confirm-box">
+    <p class="confirm-msg" id="promptMsg"></p>
+    <input type="text" id="promptInput" maxlength="20" style="width:100%;background:var(--surface2);border:1px solid #3a3a5a;color:var(--text);border-radius:8px;padding:10px;font-size:.9rem;outline:none;margin-bottom:16px;font-family:inherit">
+    <div class="confirm-actions">
+      <button class="btn" id="promptCancel">Skip</button>
+      <button class="btn btn-accent" id="promptOk">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

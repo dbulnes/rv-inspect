@@ -39,6 +39,41 @@ function appConfirm(msg) {
   });
 }
 
+// ====== PROMPT DIALOG ======
+// In-app text prompt — replaces browser prompt() calls
+function appPrompt(msg, placeholder) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('promptOverlay');
+    document.getElementById('promptMsg').textContent = msg;
+    const input = document.getElementById('promptInput');
+    input.value = '';
+    input.placeholder = placeholder || '';
+    overlay.classList.add('show');
+    input.focus();
+    const ok = document.getElementById('promptOk');
+    const cancel = document.getElementById('promptCancel');
+    function cleanup(val) {
+      overlay.classList.remove('show');
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onBg);
+      input.removeEventListener('keydown', onEnter);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    }
+    function onOk() { cleanup(input.value.trim() || null); }
+    function onCancel() { cleanup(null); }
+    function onBg(e) { if (e.target === overlay) cleanup(null); }
+    function onEnter(e) { if (e.key === 'Enter') { e.preventDefault(); onOk(); } }
+    function onKey(e) { if (e.key === 'Escape') cleanup(null); }
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onBg);
+    input.addEventListener('keydown', onEnter);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 // ====== STATE ======
 // state.info    — inspection metadata (name, date, location, seller, etc.)
 // state.checks  — per-item check status keyed by "sectionId_itemIndex"
@@ -65,8 +100,8 @@ function isMultiContributor() {
 }
 async function ensureHandle() {
   if (getHandle()) return;
-  const name = prompt('Enter your name or initials (for attributing changes):');
-  if (name && name.trim()) setHandle(name.trim());
+  const name = await appPrompt('Enter your name or initials', 'e.g. David');
+  if (name) setHandle(name);
 }
 
 // ====== RENDER ======
