@@ -677,58 +677,78 @@ function statusSymbol(s) {
 function exportMarkdown() {
   const d = gatherExportData();
   const title = d.info.name || 'RV Inspection';
+  const total = d.stats.ok + d.stats.issues + d.stats.pending + d.stats.na;
   let md = `# ${title}\n\n`;
 
-  // Info
+  // Info table
   const fields = [
     ['Date', d.info.date], ['Location', d.info.location], ['Seller', d.info.seller],
     ['Asking Price', d.info.price], ['VIN', d.info.vin], ['Mileage', d.info.mileage]
-  ];
-  const infoLines = fields.filter(f => f[1]).map(f => `**${f[0]}:** ${f[1]}`);
-  if (infoLines.length) md += infoLines.join('  \n') + '\n\n';
-
-  // Stats
-  md += `> **${d.stats.ok}** passed · **${d.stats.issues}** issues · **${d.stats.pending}** pending · **${d.stats.na}** N/A\n\n`;
-
-  // Issues summary
-  const issueSections = d.sections.filter(s => s.items.some(it => it.status === 'issue'));
-  if (issueSections.length) {
-    md += '## Issues Found\n\n';
-    for (const s of issueSections) {
-      md += `### ${s.title}\n`;
-      for (const it of s.items.filter(it => it.status === 'issue')) {
-        md += `- ${it.critical ? '🔴 ' : ''}${it.text}`;
-        if (it.note) md += ` — *${it.note}*`;
-        if (it.input) md += ` (${it.input})`;
-        md += '\n';
-      }
-      md += '\n';
-    }
+  ].filter(f => f[1]);
+  if (fields.length) {
+    md += '| | |\n|---|---|\n';
+    for (const [k, v] of fields) md += `| **${k}** | ${v} |\n`;
+    md += '\n';
   }
 
-  // Full checklist
-  md += '## Full Checklist\n\n';
+  // Stats
+  const pct = n => total ? (n / total * 100).toFixed(0) + '%' : '0%';
+  md += `> **${d.stats.ok}** passed (${pct(d.stats.ok)}) · **${d.stats.issues}** issues · **${d.stats.pending}** pending · **${d.stats.na}** N/A\n\n`;
+
+  // Assessment (up front, like the PDF)
+  const sf = d.summary;
+  if (sf.condition || sf.action || sf.majorIssues || sf.minorIssues || sf.repairCosts) {
+    md += '## Assessment\n\n';
+    if (sf.condition) md += `- **Overall Condition:** ${sf.condition}\n`;
+    if (sf.action) md += `- **Recommended Action:** ${sf.action}\n`;
+    if (sf.repairCosts) md += `- **Est. Repair Costs:** ${sf.repairCosts}\n`;
+    md += '\n';
+    if (sf.majorIssues) md += `**Major Issues:** ${sf.majorIssues}\n\n`;
+    if (sf.minorIssues) md += `**Minor Issues:** ${sf.minorIssues}\n\n`;
+  }
+
+  // Issues table
+  const allIssues = [];
+  d.sections.forEach(s => s.items.forEach(it => {
+    if (it.status === 'issue') allIssues.push({ section: s.title, ...it });
+  }));
+  if (allIssues.length) {
+    md += `## Issues Found (${allIssues.length})\n\n`;
+    md += '| Section | Item | Notes |\n|---|---|---|\n';
+    for (const it of allIssues) {
+      const notes = [it.input, it.note].filter(Boolean).join(' · ');
+      md += `| ${it.section} | ${it.critical ? '**' : ''}${it.text}${it.critical ? '**' : ''} | ${notes ? '*' + notes + '*' : '—'} |\n`;
+    }
+    md += '\n';
+  }
+
+  // Full checklist — sections with per-section stats
+  md += '---\n\n## Full Checklist\n\n';
   for (const s of d.sections) {
-    md += `### ${s.title}\n`;
+    const st = { ok: 0, issue: 0, pending: 0 };
+    s.items.forEach(it => {
+      if (it.status === 'ok') st.ok++;
+      else if (it.status === 'issue') st.issue++;
+      else if (it.status !== 'na') st.pending++;
+    });
+    const tag = st.issue ? ` — ${st.issue} issue${st.issue > 1 ? 's' : ''}` : '';
+    md += `### ${s.title}  \n`;
+    md += `*${st.ok}/${s.items.length} passed${tag}*\n\n`;
     for (const it of s.items) {
-      md += `- [${it.status === 'ok' ? 'x' : ' '}] ${statusSymbol(it.status)} ${it.critical ? '🔴 ' : ''}${it.text}`;
-      if (it.input) md += ` — ${it.input}`;
-      if (it.note) md += ` — *${it.note}*`;
+      const sym = it.status === 'ok' ? 'x' : ' ';
+      const prefix = it.status === 'issue' ? '**' : '';
+      const suffix = it.status === 'issue' ? '**' : '';
+      md += `- [${sym}] ${prefix}${it.critical ? '\\[!\\] ' : ''}${it.text}${suffix}`;
+      const meta = [it.input, it.note].filter(Boolean).join(' · ');
+      if (meta) md += ` — *${meta}*`;
+      if (it.status === 'na') md += ' *(N/A)*';
       md += '\n';
     }
     md += '\n';
   }
 
-  // Summary fields
-  const sf = d.summary;
-  if (sf.condition || sf.action || sf.majorIssues || sf.minorIssues || sf.repairCosts) {
-    md += '## Assessment\n\n';
-    if (sf.condition) md += `**Overall Condition:** ${sf.condition}  \n`;
-    if (sf.action) md += `**Recommended Action:** ${sf.action}  \n`;
-    if (sf.majorIssues) md += `**Major Issues:** ${sf.majorIssues}  \n`;
-    if (sf.minorIssues) md += `**Minor Issues:** ${sf.minorIssues}  \n`;
-    if (sf.repairCosts) md += `**Estimated Repair Costs:** ${sf.repairCosts}  \n`;
-  }
+  // Footer
+  md += `---\n*Generated ${new Date().toLocaleDateString()} · RV Inspect*\n`;
 
   const filename = (title.replace(/[^a-zA-Z0-9 _-]/g, '') || 'inspection') + '.md';
   downloadBlob(new Blob([md], { type: 'text/markdown' }), filename);
@@ -740,19 +760,20 @@ async function exportPDF() {
   showToast('Generating PDF…', false, 10000);
   const d = gatherExportData();
   const title = d.info.name || 'RV Inspection';
+  const total = d.stats.ok + d.stats.issues + d.stats.pending + d.stats.na;
 
   // Collect all photos grouped by item key
   const photoMap = {};
   try {
     const db = await openPhotoDB();
-    await new Promise((resolve, reject) => {
+    await new Promise((resolve) => {
       const tx = db.transaction('photos', 'readonly');
       const req = tx.objectStore('photos').openCursor();
       req.onsuccess = e => {
         const cursor = e.target.result;
         if (cursor) {
           const parts = cursor.key.split('_');
-          parts.pop(); // remove index
+          parts.pop();
           const itemKey = parts.join('_');
           if (!photoMap[itemKey]) photoMap[itemKey] = [];
           photoMap[itemKey].push(cursor.value);
@@ -761,113 +782,240 @@ async function exportPDF() {
       };
       req.onerror = () => resolve();
     });
-  } catch (e) { /* no photos, that's fine */ }
+  } catch (e) { /* no photos */ }
 
-  // Build HTML document for printing to PDF
-  const statusLabel = s => s === 'ok' ? '✓ OK' : s === 'issue' ? '✗ ISSUE' : s === 'na' ? '— N/A' : '○ Pending';
-  const statusColor = s => s === 'ok' ? '#4caf50' : s === 'issue' ? '#ff5252' : s === 'na' ? '#888' : '#aaa';
+  // Per-section stats
+  function sectionStats(s) {
+    let ok = 0, issue = 0, na = 0, pending = 0;
+    s.items.forEach(it => {
+      if (it.status === 'ok') ok++;
+      else if (it.status === 'issue') issue++;
+      else if (it.status === 'na') na++;
+      else pending++;
+    });
+    return { ok, issue, na, pending, total: s.items.length };
+  }
+
+  const statusPill = (status) => {
+    const map = {
+      ok: { bg: '#e8f5e9', fg: '#2e7d32', label: 'PASS' },
+      issue: { bg: '#fce4ec', fg: '#c62828', label: 'ISSUE' },
+      na: { bg: '#f5f5f5', fg: '#757575', label: 'N/A' },
+      unchecked: { bg: '#fff3e0', fg: '#e65100', label: 'TODO' }
+    };
+    const s = map[status] || map.unchecked;
+    return `<span style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:3px;background:${s.bg};color:${s.fg}">${s.label}</span>`;
+  };
+
+  const progressBar = (stats) => {
+    const pOk = (stats.ok / stats.total * 100).toFixed(1);
+    const pIssue = (stats.issue / stats.total * 100).toFixed(1);
+    const pNa = (stats.na / stats.total * 100).toFixed(1);
+    return `<div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:#eee;margin-top:6px">
+      <div style="width:${pOk}%;background:#4caf50"></div>
+      <div style="width:${pIssue}%;background:#ef5350"></div>
+      <div style="width:${pNa}%;background:#bdbdbd"></div>
+    </div>`;
+  };
 
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title>
 <style>
+  @page { margin: 16mm 14mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; color: #222; padding: 20px; max-width: 800px; margin: 0 auto; }
-  h1 { font-size: 20px; margin-bottom: 4px; }
-  .info { color: #555; margin-bottom: 12px; line-height: 1.6; }
-  .stats { display: flex; gap: 16px; margin: 12px 0; font-weight: 600; font-size: 13px; }
-  .stat-ok { color: #4caf50; } .stat-issue { color: #ff5252; } .stat-pending { color: #888; }
-  h2 { font-size: 14px; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 2px solid #333; }
-  h3 { font-size: 12px; margin: 10px 0 4px; color: #444; }
-  .item { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; page-break-inside: avoid; }
-  .item-status { font-weight: 700; min-width: 18px; text-align: center; }
-  .item-text { flex: 1; }
-  .item-note { color: #555; font-style: italic; }
-  .critical { font-weight: 700; }
-  .critical::before { content: "🔴 "; }
-  .photos { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px 24px; }
-  .photos img { width: 120px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
-  .assessment { margin-top: 16px; padding: 10px; background: #f5f5f5; border-radius: 6px; }
-  .assessment p { margin: 3px 0; }
-  .section-block { page-break-inside: avoid; }
-  @media print { body { padding: 0; } }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; color: #1a1a1a; line-height: 1.5; max-width: 780px; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Header */
+  .header { border-bottom: 3px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 20px; }
+  .header h1 { font-size: 26px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 8px; }
+  .info-grid { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 11px; color: #555; }
+  .info-grid dt { font-weight: 600; color: #333; }
+  .info-grid dd { margin: 0; }
+  .info-pair { display: flex; gap: 5px; }
+
+  /* Stats cards */
+  .stats-row { display: flex; gap: 12px; margin-bottom: 24px; }
+  .stat-card { flex: 1; padding: 12px 14px; border-radius: 8px; text-align: center; }
+  .stat-card .num { font-size: 28px; font-weight: 800; line-height: 1; }
+  .stat-card .label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-top: 4px; }
+  .stat-ok { background: #e8f5e9; color: #2e7d32; }
+  .stat-issue { background: #fce4ec; color: #c62828; }
+  .stat-pending { background: #fff3e0; color: #e65100; }
+  .stat-na { background: #f5f5f5; color: #757575; }
+
+  /* Overall progress */
+  .progress-wrap { margin-bottom: 24px; }
+  .progress-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #eee; }
+  .progress-bar .ok { background: #4caf50; }
+  .progress-bar .issue { background: #ef5350; }
+  .progress-bar .na { background: #bdbdbd; }
+  .progress-legend { display: flex; gap: 14px; margin-top: 6px; font-size: 10px; color: #777; }
+  .progress-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  .legend-ok::before { background: #4caf50; }
+  .legend-issue::before { background: #ef5350; }
+  .legend-pending::before { background: #fff3e0; border: 1px solid #e65100; width: 6px; height: 6px; }
+  .legend-na::before { background: #bdbdbd; }
+
+  /* Issues alert */
+  .issues-alert { background: #fce4ec; border: 1px solid #ef9a9a; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px; page-break-inside: avoid; }
+  .issues-alert h2 { font-size: 14px; font-weight: 700; color: #b71c1c; margin-bottom: 10px; }
+  .issues-alert .issue-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px solid #f8bbd0; }
+  .issues-alert .issue-row:first-of-type { border-top: none; }
+  .issues-alert .issue-section { font-size: 10px; font-weight: 600; color: #c62828; text-transform: uppercase; letter-spacing: .3px; min-width: 100px; padding-top: 1px; }
+  .issues-alert .issue-text { flex: 1; font-size: 12px; }
+  .issues-alert .issue-note { color: #555; font-style: italic; font-size: 11px; }
+  .issues-alert .issue-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .issues-alert .issue-photos img { width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #ef9a9a; }
+
+  /* Assessment */
+  .assessment { background: linear-gradient(135deg, #e3f2fd, #f3e5f5); border-radius: 8px; padding: 16px; margin-bottom: 24px; page-break-inside: avoid; }
+  .assessment h2 { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #1a1a1a; }
+  .assessment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .assessment-item { font-size: 11px; }
+  .assessment-item .a-label { font-weight: 600; color: #555; font-size: 10px; text-transform: uppercase; letter-spacing: .3px; }
+  .assessment-item .a-value { margin-top: 2px; }
+  .assessment-full { grid-column: 1 / -1; }
+
+  /* Section cards */
+  .section { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 14px; overflow: hidden; page-break-inside: avoid; }
+  .section-head { background: #fafafa; padding: 10px 14px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+  .section-head h3 { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+  .section-counts { display: flex; gap: 8px; font-size: 10px; font-weight: 600; }
+  .section-count { padding: 2px 6px; border-radius: 3px; }
+  .section-body { padding: 6px 0; }
+  .item { display: flex; align-items: flex-start; gap: 10px; padding: 5px 14px; }
+  .item:nth-child(even) { background: #fafafa; }
+  .item-pill { flex-shrink: 0; margin-top: 1px; }
+  .item-content { flex: 1; min-width: 0; }
+  .item-text { font-size: 12px; }
+  .item-critical { font-weight: 700; color: #c62828; }
+  .item-critical::before { content: "\\26A0\\FE0F "; }
+  .item-meta { font-size: 10.5px; color: #666; font-style: italic; margin-top: 1px; }
+  .item-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .item-photos img { width: 110px; height: 82px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; }
+
+  /* Footer */
+  .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 10px; color: #999; text-align: center; }
+
+  @media print {
+    body { padding: 0; }
+    .section { break-inside: avoid; }
+  }
 </style></head><body>`;
 
-  html += `<h1>${escHtml(title)}</h1>`;
+  // ---- HEADER ----
+  html += `<div class="header"><h1>${escHtml(title)}</h1><div class="info-grid">`;
+  const infoFields = [
+    ['Date', d.info.date], ['Location', d.info.location], ['Seller', d.info.seller],
+    ['Asking Price', d.info.price], ['VIN', d.info.vin], ['Mileage', d.info.mileage]
+  ];
+  for (const [label, val] of infoFields) {
+    if (val) html += `<div class="info-pair"><dt>${label}:</dt><dd>${escHtml(val)}</dd></div>`;
+  }
+  html += '</div></div>';
 
-  // Info line
-  const infoItems = [];
-  if (d.info.date) infoItems.push(d.info.date);
-  if (d.info.location) infoItems.push(d.info.location);
-  if (d.info.seller) infoItems.push('Seller: ' + d.info.seller);
-  if (d.info.price) infoItems.push('Price: ' + d.info.price);
-  if (d.info.vin) infoItems.push('VIN: ' + d.info.vin);
-  if (d.info.mileage) infoItems.push('Mileage: ' + d.info.mileage);
-  if (infoItems.length) html += `<div class="info">${infoItems.map(escHtml).join(' · ')}</div>`;
-
-  // Stats bar
-  html += `<div class="stats">
-    <span class="stat-ok">✓ ${d.stats.ok} passed</span>
-    <span class="stat-issue">✗ ${d.stats.issues} issues</span>
-    <span class="stat-pending">○ ${d.stats.pending} pending</span>
+  // ---- STATS CARDS ----
+  html += `<div class="stats-row">
+    <div class="stat-card stat-ok"><div class="num">${d.stats.ok}</div><div class="label">Passed</div></div>
+    <div class="stat-card stat-issue"><div class="num">${d.stats.issues}</div><div class="label">Issues</div></div>
+    <div class="stat-card stat-pending"><div class="num">${d.stats.pending}</div><div class="label">Pending</div></div>
+    <div class="stat-card stat-na"><div class="num">${d.stats.na}</div><div class="label">N/A</div></div>
   </div>`;
 
-  // Issues summary
-  const issueSections = d.sections.filter(s => s.items.some(it => it.status === 'issue'));
-  if (issueSections.length) {
-    html += '<h2>Issues Found</h2>';
-    for (const s of issueSections) {
-      html += `<h3>${escHtml(s.title)}</h3>`;
-      for (const it of s.items.filter(it => it.status === 'issue')) {
-        html += `<div class="item">
-          <span class="item-status" style="color:${statusColor('issue')}">✗</span>
-          <span class="item-text${it.critical ? ' critical' : ''}">${escHtml(it.text)}`;
-        if (it.note) html += ` <span class="item-note">— ${escHtml(it.note)}</span>`;
-        if (it.input) html += ` <span class="item-note">(${escHtml(it.input)})</span>`;
-        html += '</span></div>';
-        if (photoMap[it.key]?.length) {
-          html += '<div class="photos">' + photoMap[it.key].map(src => `<img src="${src}">`).join('') + '</div>';
-        }
-      }
-    }
+  // ---- OVERALL PROGRESS BAR ----
+  if (total > 0) {
+    const pOk = (d.stats.ok / total * 100).toFixed(1);
+    const pIssue = (d.stats.issues / total * 100).toFixed(1);
+    const pNa = (d.stats.na / total * 100).toFixed(1);
+    html += `<div class="progress-wrap">
+      <div class="progress-bar">
+        <div class="ok" style="width:${pOk}%"></div>
+        <div class="issue" style="width:${pIssue}%"></div>
+        <div class="na" style="width:${pNa}%"></div>
+      </div>
+      <div class="progress-legend">
+        <span class="legend-ok">Passed ${pOk}%</span>
+        <span class="legend-issue">Issues ${pIssue}%</span>
+        <span class="legend-pending">Pending</span>
+        <span class="legend-na">N/A</span>
+      </div>
+    </div>`;
   }
 
-  // Full checklist with photos
-  html += '<h2>Full Checklist</h2>';
-  for (const s of d.sections) {
-    html += `<div class="section-block"><h3>${escHtml(s.title)}</h3>`;
-    for (const it of s.items) {
-      html += `<div class="item">
-        <span class="item-status" style="color:${statusColor(it.status)}">${statusSymbol(it.status)}</span>
-        <span class="item-text${it.critical ? ' critical' : ''}">${escHtml(it.text)}`;
-      if (it.input) html += ` <span class="item-note">— ${escHtml(it.input)}</span>`;
-      if (it.note) html += ` <span class="item-note">— ${escHtml(it.note)}</span>`;
-      html += '</span></div>';
-      if (photoMap[it.key]?.length) {
-        html += '<div class="photos">' + photoMap[it.key].map(src => `<img src="${src}">`).join('') + '</div>';
-      }
-    }
-    html += '</div>';
-  }
-
-  // Assessment
+  // ---- ASSESSMENT (before details, if filled) ----
   const sf = d.summary;
   if (sf.condition || sf.action || sf.majorIssues || sf.minorIssues || sf.repairCosts) {
-    html += '<div class="assessment"><h2 style="border:0;margin:0 0 6px">Assessment</h2>';
-    if (sf.condition) html += `<p><strong>Overall Condition:</strong> ${escHtml(sf.condition)}</p>`;
-    if (sf.action) html += `<p><strong>Recommended Action:</strong> ${escHtml(sf.action)}</p>`;
-    if (sf.majorIssues) html += `<p><strong>Major Issues:</strong> ${escHtml(sf.majorIssues)}</p>`;
-    if (sf.minorIssues) html += `<p><strong>Minor Issues:</strong> ${escHtml(sf.minorIssues)}</p>`;
-    if (sf.repairCosts) html += `<p><strong>Estimated Repair Costs:</strong> ${escHtml(sf.repairCosts)}</p>`;
+    html += '<div class="assessment"><h2>Assessment</h2><div class="assessment-grid">';
+    if (sf.condition) html += `<div class="assessment-item"><div class="a-label">Overall Condition</div><div class="a-value">${escHtml(sf.condition)}</div></div>`;
+    if (sf.action) html += `<div class="assessment-item"><div class="a-label">Recommended Action</div><div class="a-value">${escHtml(sf.action)}</div></div>`;
+    if (sf.repairCosts) html += `<div class="assessment-item"><div class="a-label">Est. Repair Costs</div><div class="a-value">${escHtml(sf.repairCosts)}</div></div>`;
+    if (sf.majorIssues) html += `<div class="assessment-item assessment-full"><div class="a-label">Major Issues</div><div class="a-value">${escHtml(sf.majorIssues)}</div></div>`;
+    if (sf.minorIssues) html += `<div class="assessment-item assessment-full"><div class="a-label">Minor Issues</div><div class="a-value">${escHtml(sf.minorIssues)}</div></div>`;
+    html += '</div></div>';
+  }
+
+  // ---- ISSUES ALERT ----
+  const allIssues = [];
+  d.sections.forEach(s => s.items.forEach(it => {
+    if (it.status === 'issue') allIssues.push({ section: s.title, ...it });
+  }));
+  if (allIssues.length) {
+    html += `<div class="issues-alert"><h2>${allIssues.length} Issue${allIssues.length > 1 ? 's' : ''} Found</h2>`;
+    for (const it of allIssues) {
+      html += `<div class="issue-row">
+        <div class="issue-section">${escHtml(it.section)}</div>
+        <div>
+          <div class="issue-text${it.critical ? ' item-critical' : ''}">${escHtml(it.text)}</div>`;
+      if (it.note || it.input) {
+        html += '<div class="issue-note">';
+        if (it.note) html += escHtml(it.note);
+        if (it.note && it.input) html += ' · ';
+        if (it.input) html += escHtml(it.input);
+        html += '</div>';
+      }
+      if (photoMap[it.key]?.length) {
+        html += '<div class="issue-photos">' + photoMap[it.key].map(src => `<img src="${src}">`).join('') + '</div>';
+      }
+      html += '</div></div>';
+    }
     html += '</div>';
   }
+
+  // ---- SECTION CARDS ----
+  for (const s of d.sections) {
+    const st = sectionStats(s);
+    html += `<div class="section"><div class="section-head"><div><h3>${escHtml(s.title)}</h3>${progressBar(st)}</div><div class="section-counts">`;
+    if (st.ok) html += `<span class="section-count" style="background:#e8f5e9;color:#2e7d32">${st.ok} pass</span>`;
+    if (st.issue) html += `<span class="section-count" style="background:#fce4ec;color:#c62828">${st.issue} issue</span>`;
+    if (st.pending) html += `<span class="section-count" style="background:#fff3e0;color:#e65100">${st.pending} todo</span>`;
+    html += '</div></div><div class="section-body">';
+    for (const it of s.items) {
+      html += `<div class="item"><div class="item-pill">${statusPill(it.status)}</div><div class="item-content">`;
+      html += `<div class="item-text${it.critical ? ' item-critical' : ''}">${escHtml(it.text)}</div>`;
+      if (it.note || it.input) {
+        html += '<div class="item-meta">';
+        if (it.input) html += escHtml(it.input);
+        if (it.input && it.note) html += ' · ';
+        if (it.note) html += escHtml(it.note);
+        html += '</div>';
+      }
+      if (photoMap[it.key]?.length) {
+        html += '<div class="item-photos">' + photoMap[it.key].map(src => `<img src="${src}">`).join('') + '</div>';
+      }
+      html += '</div></div>';
+    }
+    html += '</div></div>';
+  }
+
+  // ---- FOOTER ----
+  html += `<div class="footer">Generated ${new Date().toLocaleDateString()} · RV Inspect</div>`;
 
   html += '</body></html>';
 
-  // Open print dialog in a new window — this produces a PDF on all platforms
+  // Open print dialog in a new window
   const printWin = window.open('', '_blank');
   if (!printWin) { showToast('Please allow popups to export PDF', true); return; }
   printWin.document.write(html);
   printWin.document.close();
-  // Wait for images to load before triggering print
   const images = printWin.document.querySelectorAll('img');
   const loaded = images.length ? Promise.all(Array.from(images).map(img =>
     img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
