@@ -69,11 +69,15 @@ create trigger inspections_updated_at
 ```
 
 3. In Supabase **Authentication > Settings**, make sure Email auth is enabled (magic link is on by default)
-4. In Supabase **Authentication > URL Configuration**, add your app URL (e.g. `https://yourusername.github.io/trailer-checklist`) to the **Redirect URLs**
+4. In Supabase **Authentication > URL Configuration**:
+   - Set **Site URL** to your app URL (e.g. `https://yourusername.github.io/trailer-checklist/`)
+   - Add the same URL to **Redirect URLs**
+   - For local dev, also add `http://localhost:8080` to Redirect URLs
 5. Open the app, tap the **☁️ button**, expand **Supabase Setup**, and enter:
    - Your **Project URL** (e.g. `https://xyz.supabase.co`) — found in Settings > API
-   - Your **Anon key** (starts with `eyJ...`) — found in Settings > API
+   - Your **Publishable key** (starts with `sb_publishable_...`) — found in Settings > API
 6. Click **Connect**, then sign in with your email via magic link
+7. Click the magic link in your email — you'll be redirected back to the app and signed in automatically
 
 Your inspections will now sync across any device where you sign in.
 
@@ -82,7 +86,8 @@ Your inspections will now sync across any device where you sign in.
 - **Offline-first**: localStorage is always the primary store. Cloud sync is a secondary layer.
 - **Auto-sync**: Changes are debounced and pushed to Supabase every 2 seconds when online.
 - **Conflict detection**: If the cloud has a newer version (e.g. from another device), you'll be prompted to load it or keep your local version.
-- **Named saves**: All named saves sync bidirectionally between local and cloud.
+- **Named saves**: All named saves sync bidirectionally between local and cloud. The save/load modal shows both local and cloud-only saves, with a ☁️ badge on saves that exist in both.
+- **Loading cloud saves**: Cloud-only inspections (e.g. from another device) appear in the save/load modal under "Cloud Only" and can be loaded with one tap.
 - **Privacy**: Your data lives in YOUR Supabase project. No one else has access.
 
 ## Based On

@@ -360,7 +360,7 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0; }
         <summary>Supabase Setup</summary>
         <p style="font-size:.8rem;color:var(--text2);margin:8px 0">Enter your own Supabase project credentials. The app will auto-create the required table.</p>
         <input type="text" id="byoUrl" placeholder="https://xyz.supabase.co" style="width:100%;background:var(--surface2);border:1px solid #3a3a5a;color:var(--text);border-radius:8px;padding:10px;font-size:.85rem;outline:none;margin-bottom:8px">
-        <input type="text" id="byoKey" placeholder="Anon key (starts with eyJ...)" style="width:100%;background:var(--surface2);border:1px solid #3a3a5a;color:var(--text);border-radius:8px;padding:10px;font-size:.85rem;outline:none;margin-bottom:8px">
+        <input type="text" id="byoKey" placeholder="Publishable key (starts with sb_publishable_...)" style="width:100%;background:var(--surface2);border:1px solid #3a3a5a;color:var(--text);border-radius:8px;padding:10px;font-size:.85rem;outline:none;margin-bottom:8px">
         <button class="btn btn-accent" style="width:100%;justify-content:center;padding:10px" onclick="saveBYOConfig()">Connect</button>
         <div class="cloud-msg" id="byoMsg"></div>
       </details>
@@ -1071,27 +1071,125 @@ function showSaveModal() {
   const slotsEl = document.getElementById('saveSlots');
   const keys = Object.keys(saves).sort((a,b) => (saves[b].ts || 0) - (saves[a].ts || 0));
 
+  let html = '';
   if (keys.length === 0) {
-    slotsEl.innerHTML = '<p style="color:var(--text2);font-size:.85rem;padding:8px 0">No saved inspections yet.</p>';
+    html = '<p style="color:var(--text2);font-size:.85rem;padding:8px 0">No saved inspections yet.</p>';
   } else {
-    slotsEl.innerHTML = keys.map(k => {
+    html = '<p style="font-size:.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">Local Saves</p>';
+    html += keys.map(k => {
       const s = saves[k];
       const d = s.ts ? new Date(s.ts).toLocaleString() : 'Unknown date';
+      const safeName = escHtml(k).replace(/'/g, "\\'");
       return `
         <div class="save-slot">
           <div class="save-slot-name">${escHtml(k)}</div>
           <div class="save-slot-date">${d}</div>
           <div class="save-slot-actions">
-            <button class="save-slot-btn" onclick="loadSave('${escHtml(k)}')">Load</button>
-            <button class="save-slot-btn" onclick="overwriteSave('${escHtml(k)}')">Overwrite</button>
-            <button class="save-slot-btn delete" onclick="deleteSave('${escHtml(k)}')">Delete</button>
+            <button class="save-slot-btn" onclick="loadSave('${safeName}')">Load</button>
+            <button class="save-slot-btn" onclick="overwriteSave('${safeName}')">Overwrite</button>
+            <button class="save-slot-btn delete" onclick="deleteSave('${safeName}')">Delete</button>
           </div>
         </div>`;
     }).join('');
   }
 
+  slotsEl.innerHTML = html + '<div id="cloudSaveSlots"></div>';
   document.getElementById('newSaveName').value = state.info.location ? `${state.info.location} - ${state.info.date || 'Inspection'}` : '';
   document.getElementById('saveModal').classList.add('show');
+
+  // Fetch cloud saves
+  loadCloudSavesIntoModal(keys);
+}
+
+async function loadCloudSavesIntoModal(localKeys) {
+  const container = document.getElementById('cloudSaveSlots');
+  if (!supabaseClient || !currentUser) return;
+
+  container.innerHTML = '<p style="font-size:.75rem;color:var(--text2);padding:8px 0">Loading cloud saves...</p>';
+  try {
+    const { data, error } = await supabaseClient.from('inspections')
+      .select('name,state,updated_at')
+      .eq('user_id', currentUser.id)
+      .neq('name', '__autosave__')
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    // Find cloud-only saves (not in local)
+    const cloudOnly = data.filter(d => !localKeys.includes(d.name));
+    // Find saves that exist in both (show cloud badge)
+    const synced = data.filter(d => localKeys.includes(d.name));
+
+    let html = '';
+
+    // Add cloud badge to synced local saves
+    if (synced.length > 0) {
+      synced.forEach(s => {
+        const slot = document.querySelector(`[onclick*="loadSave('${escHtml(s.name).replace(/'/g, "\\'")}')"]`);
+        if (slot) {
+          const nameEl = slot.closest('.save-slot')?.querySelector('.save-slot-name');
+          if (nameEl && !nameEl.querySelector('.cloud-badge')) {
+            nameEl.insertAdjacentHTML('afterbegin', '<span style="font-size:.6rem;background:var(--accent);color:#fff;padding:1px 5px;border-radius:4px;margin-right:6px;vertical-align:middle">☁️</span>');
+          }
+        }
+      });
+    }
+
+    if (cloudOnly.length > 0) {
+      html += '<p style="font-size:.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">☁️ Cloud Only</p>';
+      html += cloudOnly.map(cs => {
+        const d = new Date(cs.updated_at).toLocaleString();
+        const safeName = escHtml(cs.name).replace(/'/g, "\\'");
+        return `
+          <div class="save-slot" style="border-color:#2a3a5a">
+            <div class="save-slot-name">${escHtml(cs.name)}</div>
+            <div class="save-slot-date">${d}</div>
+            <div class="save-slot-actions">
+              <button class="save-slot-btn" onclick="loadCloudSave('${safeName}')">Load</button>
+              <button class="save-slot-btn delete" onclick="deleteCloudOnlySave('${safeName}')">Delete</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    container.innerHTML = html;
+  } catch (e) {
+    console.error('Failed to load cloud saves:', e);
+    container.innerHTML = '<p style="font-size:.75rem;color:var(--warn);padding:8px 0">Failed to load cloud saves.</p>';
+  }
+}
+
+async function loadCloudSave(name) {
+  if (!supabaseClient || !currentUser) return;
+  if (!confirm(`Load "${name}" from cloud? Current unsaved progress will be lost.`)) return;
+  try {
+    const { data, error } = await supabaseClient.from('inspections')
+      .select('state').eq('user_id', currentUser.id).eq('name', name).single();
+    if (error) throw error;
+    state = data.state;
+    autoSaveLocal();
+    // Also save to local named saves
+    const saves = getSaves();
+    saves[name] = { data: JSON.parse(JSON.stringify(state)), ts: Date.now() };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+    renderSections();
+    loadInfoFields();
+    SECTIONS.forEach(s => updateBadge(s.id));
+    closeSaveModal();
+  } catch (e) {
+    console.error('Failed to load cloud save:', e);
+    alert('Failed to load from cloud.');
+  }
+}
+
+async function deleteCloudOnlySave(name) {
+  if (!confirm(`Delete "${name}" from cloud?`)) return;
+  await deleteSaveFromCloud(name);
+  showSaveModal();
 }
 
 function closeSaveModal(e) {
@@ -1168,7 +1266,7 @@ function saveBYOConfig() {
   const key = document.getElementById('byoKey').value.trim();
   const msgEl = document.getElementById('byoMsg');
   if (!url || !key) {
-    showCloudMsg(msgEl, 'Please enter both URL and anon key.', true);
+    showCloudMsg(msgEl, 'Please enter both URL and publishable key.', true);
     return;
   }
   if (!url.includes('supabase')) {
