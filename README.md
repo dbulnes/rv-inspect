@@ -111,7 +111,8 @@ create table device_links (
   user_id uuid not null references auth.users(id) on delete cascade,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '5 minutes'),
-  claimed boolean not null default false
+  claimed boolean not null default false,
+  can_pair boolean not null default false
 );
 
 create index idx_device_links_code on device_links(code);
@@ -139,8 +140,10 @@ create trigger device_links_cleanup
 ```
 
 2. On **Device A** (already signed in): tap ☁️ → **Link Another Device** → a code and QR are shown (valid for 5 minutes)
+   - Optionally check **"Allow linked device to pair others"** to let Device B generate its own pairing codes
 3. On **Device B**: scan the QR code (auto-configures Supabase + fills the code) or open the app → ☁️ → enter the code manually → tap **Link**
 4. Device B is now signed in as the same user — no email required
+5. By default, Device B **cannot** pair additional devices unless Device A granted that permission
 
 ### How it works
 

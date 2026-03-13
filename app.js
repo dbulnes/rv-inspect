@@ -2,12 +2,41 @@
 // ====== TOAST ======
 // In-app notification — replaces browser alert() calls
 let toastTimer;
-function showToast(msg, duration = 2000) {
+function showToast(msg, isWarn = false, duration = 2000) {
   const el = document.getElementById('toast');
   el.textContent = msg;
-  el.className = 'toast show';
+  el.className = 'toast show' + (isWarn ? ' warn' : '');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+// ====== CONFIRM DIALOG ======
+// In-app confirmation — replaces browser confirm() calls
+function appConfirm(msg) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('confirmOverlay');
+    document.getElementById('confirmMsg').textContent = msg;
+    overlay.classList.add('show');
+    const ok = document.getElementById('confirmOk');
+    const cancel = document.getElementById('confirmCancel');
+    ok.focus();
+    function cleanup(result) {
+      overlay.classList.remove('show');
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onBg);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    function onBg(e) { if (e.target === overlay) cleanup(false); }
+    function onKey(e) { if (e.key === 'Escape') cleanup(false); }
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onBg);
+    document.addEventListener('keydown', onKey);
+  });
 }
 
 // ====== STATE ======
@@ -16,7 +45,8 @@ function showToast(msg, duration = 2000) {
 // state.notes   — per-item text notes, same key format
 // state.inputs  — per-item measurement/input values (e.g. tire pressure)
 // state.summary — overall condition, recommended action, cost notes
-let state = { info: {}, checks: {}, notes: {}, inputs: {}, summary: {} };
+function freshState() { return { info: {}, checks: {}, notes: {}, inputs: {}, summary: {} }; }
+let state = freshState();
 
 // Tracks the currently-loaded named save so auto-save updates it too
 let currentSaveName = null;
@@ -249,7 +279,7 @@ function closeLightbox(e) {
 
 async function deleteLightboxPhoto() {
   if (lightboxKey === null || lightboxIdx === null) return;
-  if (!confirm('Delete this photo?')) return;
+  if (!await appConfirm('Delete this photo?')) return;
   const db = await openPhotoDB();
   const tx = db.transaction('photos', 'readwrite');
   tx.objectStore('photos').delete(`${lightboxKey}_${lightboxIdx}`);
@@ -370,18 +400,24 @@ async function pullPhotosFromCloud() {
 async function pushAllPhotosToCloud() {
   if (!supabaseClient || !currentUser) return;
   const db = await openPhotoDB();
-  const tx = db.transaction('photos', 'readonly');
-  const req = tx.objectStore('photos').openCursor();
-  req.onsuccess = e => {
-    const cursor = e.target.result;
-    if (cursor) {
-      const parts = cursor.key.split('_');
-      const idx = parseInt(parts.pop());
-      const itemKey = parts.join('_');
-      pushPhotoToCloud(itemKey, idx, cursor.value);
-      cursor.continue();
-    }
-  };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('photos', 'readonly');
+    const uploads = [];
+    const req = tx.objectStore('photos').openCursor();
+    req.onsuccess = e => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const parts = cursor.key.split('_');
+        const idx = parseInt(parts.pop());
+        const itemKey = parts.join('_');
+        uploads.push(pushPhotoToCloud(itemKey, idx, cursor.value));
+        cursor.continue();
+      } else {
+        Promise.all(uploads).then(resolve).catch(reject);
+      }
+    };
+    req.onerror = () => resolve();
+  });
 }
 
 // ====== VIN BARCODE SCANNER ======

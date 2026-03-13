@@ -82,32 +82,32 @@ function showSaveModal() {
     html += keys.map(k => {
       const s = saves[k];
       const d = s.ts ? new Date(s.ts).toLocaleString() : '';
-      const safeName = escHtml(k).replace(/'/g, "\\'");
+      const encodedName = encodeURIComponent(k);
       const isCurrent = k === currentSaveName;
       return `
         <div class="save-slot${isCurrent ? ' current' : ''}">
           <div class="save-slot-name">${escHtml(k)}${isCurrent ? ' <span style="font-size:.65rem;color:var(--accent);font-weight:400">(current)</span>' : ''}</div>
           <div class="save-slot-date">${d}</div>
           <div class="save-slot-actions">
-            ${isCurrent ? '' : `<button class="save-slot-btn" onclick="loadSave('${safeName}')">Load</button>`}
-            <button class="save-slot-btn delete" onclick="deleteSave('${safeName}')">Delete</button>
+            ${isCurrent ? '' : `<button class="save-slot-btn" data-action="load" data-name="${encodedName}">Load</button>`}
+            <button class="save-slot-btn delete" data-action="delete" data-name="${encodedName}">Delete</button>
           </div>
         </div>`;
     }).join('');
   }
 
-  slotsEl.innerHTML = html + '<div id="cloudSaveSlots"></div>';
+  slotsEl.innerHTML = html;
   document.getElementById('saveModal').classList.add('show');
 
   // Fetch cloud-only saves
   loadCloudSavesIntoModal(keys);
 }
 
+let _loadingCloudSaves = false;
 async function loadCloudSavesIntoModal(localKeys) {
-  const container = document.getElementById('cloudSaveSlots');
-  if (!supabaseClient || !currentUser) return;
+  if (!supabaseClient || !currentUser || _loadingCloudSaves) return;
+  _loadingCloudSaves = true;
 
-  container.innerHTML = '<p style="font-size:.75rem;color:var(--text2);padding:8px 0">Loading cloud saves...</p>';
   try {
     const { data, error } = await supabaseClient.from('inspections')
       .select('name,state,updated_at')
@@ -116,74 +116,41 @@ async function loadCloudSavesIntoModal(localKeys) {
       .order('updated_at', { ascending: false });
 
     if (error) throw error;
-    if (!data || data.length === 0) {
-      container.innerHTML = '';
+    if (!data || data.length === 0) return;
+
+    const cloudNames = new Set(data.map(d => d.name));
+
+    // Pull cloud-only saves into localStorage
+    const saves = getSaves();
+    let pulled = false;
+    for (const cs of data) {
+      if (!saves[cs.name]) {
+        saves[cs.name] = { data: cs.state, ts: new Date(cs.updated_at).getTime() };
+        pulled = true;
+      }
+    }
+    if (pulled) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+      // Re-render the modal with the unified list
+      showSaveModal();
       return;
     }
 
-    // Add cloud badge to synced local saves
-    const synced = data.filter(d => localKeys.includes(d.name));
-    synced.forEach(s => {
-      const slot = document.querySelector(`[onclick*="loadSave('${escHtml(s.name).replace(/'/g, "\\'")}')"]`);
-      const nameEl = (slot?.closest('.save-slot') || document.querySelector('.save-slot.current'))?.querySelector('.save-slot-name');
-      if (nameEl && !nameEl.querySelector('.cloud-badge')) {
+    // Add cloud badge to saves that exist in cloud
+    document.querySelectorAll('.save-slot').forEach(slot => {
+      const nameEl = slot.querySelector('.save-slot-name');
+      if (!nameEl) return;
+      // Extract the raw name from the element text (strip badge and "(current)")
+      const rawName = nameEl.textContent.replace(/\(current\)/, '').trim();
+      if (cloudNames.has(rawName) && !nameEl.querySelector('.cloud-badge')) {
         nameEl.insertAdjacentHTML('afterbegin', '<span class="cloud-badge" style="font-size:.6rem;background:var(--accent);color:#fff;padding:1px 5px;border-radius:4px;margin-right:6px;vertical-align:middle">☁️</span>');
       }
     });
-
-    // Show cloud-only saves
-    const cloudOnly = data.filter(d => !localKeys.includes(d.name));
-    if (cloudOnly.length > 0) {
-      let html = '<p style="font-size:.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">☁️ Cloud Only</p>';
-      html += cloudOnly.map(cs => {
-        const d = new Date(cs.updated_at).toLocaleString();
-        const safeName = escHtml(cs.name).replace(/'/g, "\\'");
-        return `
-          <div class="save-slot" style="border-color:#2a3a5a">
-            <div class="save-slot-name">${escHtml(cs.name)}</div>
-            <div class="save-slot-date">${d}</div>
-            <div class="save-slot-actions">
-              <button class="save-slot-btn" onclick="loadCloudSave('${safeName}')">Load</button>
-              <button class="save-slot-btn delete" onclick="deleteCloudOnlySave('${safeName}')">Delete</button>
-            </div>
-          </div>`;
-      }).join('');
-      container.innerHTML = html;
-    } else {
-      container.innerHTML = '';
-    }
   } catch (e) {
     console.error('Failed to load cloud saves:', e);
-    container.innerHTML = '<p style="font-size:.75rem;color:var(--warn);padding:8px 0">Failed to load cloud saves.</p>';
+  } finally {
+    _loadingCloudSaves = false;
   }
-}
-
-async function loadCloudSave(name) {
-  if (!supabaseClient || !currentUser) return;
-  try {
-    const { data, error } = await supabaseClient.from('inspections')
-      .select('state').eq('user_id', currentUser.id).eq('name', name).single();
-    if (error) throw error;
-    state = data.state;
-    currentSaveName = name;
-    const saves = getSaves();
-    saves[name] = { data: JSON.parse(JSON.stringify(state)), ts: Date.now() };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
-    renderSections();
-    loadInfoFields();
-    SECTIONS.forEach(s => updateBadge(s.id));
-    closeSaveModal();
-    pullPhotosFromCloud();
-  } catch (e) {
-    console.error('Failed to load cloud save:', e);
-    showToast('Failed to load from cloud.');
-  }
-}
-
-async function deleteCloudOnlySave(name) {
-  if (!confirm(`Delete "${name}" from cloud?`)) return;
-  await deleteSaveFromCloud(name);
-  showSaveModal();
 }
 
 function closeSaveModal(e) {
@@ -197,7 +164,7 @@ function newInspection() {
   ensureSaveName();
   autoSave();
   // Reset to blank state
-  state = { info: {}, checks: {}, notes: {}, inputs: {}, summary: {} };
+  state = freshState();
   currentSaveName = null;
   ensureSaveName();
   autoSave();
@@ -222,15 +189,15 @@ function loadSave(name) {
   }
 }
 
-function deleteSave(name) {
-  if (!confirm(`Delete "${name}"?`)) return;
+async function deleteSave(name) {
+  if (!await appConfirm(`Delete "${name}"?`)) return;
   const saves = getSaves();
   delete saves[name];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
   deleteSaveFromCloud(name);
   // If we deleted the current save, start fresh
   if (name === currentSaveName) {
-    state = { info: {}, checks: {}, notes: {}, inputs: {}, summary: {} };
+    state = freshState();
     currentSaveName = null;
     ensureSaveName();
     autoSave();
@@ -241,9 +208,9 @@ function deleteSave(name) {
   showSaveModal();
 }
 
-function resetAll() {
-  if (!confirm('Reset all progress?')) return;
-  state = { info: {}, checks: {}, notes: {}, inputs: {}, summary: {} };
+async function resetAll() {
+  if (!await appConfirm('Reset all progress?')) return;
+  state = freshState();
   currentSaveName = null;
   ensureSaveName();
   autoSave();
@@ -285,8 +252,8 @@ function saveBYOConfig() {
   initSupabase();
 }
 
-function disconnectSupabase() {
-  if (!confirm('Disconnect from Supabase? Local data will be kept.')) return;
+async function disconnectSupabase() {
+  if (!await appConfirm('Disconnect from Supabase? Local data will be kept.')) return;
   localStorage.removeItem(BYO_CONFIG_KEY);
   supabaseClient = null;
   currentUser = null;
@@ -357,6 +324,8 @@ function signOut() {
   if (!supabaseClient) return;
   supabaseClient.auth.signOut().then(() => {
     currentUser = null;
+    localStorage.removeItem('rv_inspect_paired');
+    localStorage.removeItem('rv_inspect_can_pair');
     updateCloudUI();
   });
 }
@@ -395,6 +364,11 @@ function updateCloudUI() {
     if (lastSyncTime) {
       document.getElementById('cloudSyncStatus').textContent = 'Last synced: ' + new Date(lastSyncTime).toLocaleString();
     }
+    // Show/hide pairing section based on permissions
+    const isPaired = localStorage.getItem('rv_inspect_paired') === 'true';
+    const canPair = localStorage.getItem('rv_inspect_can_pair') === 'true';
+    const pairSection = document.getElementById('pairGenerateSection');
+    if (pairSection) pairSection.style.display = (!isPaired || canPair) ? '' : 'none';
   } else {
     loggedIn.style.display = 'none';
     loggedOut.style.display = 'block';
@@ -432,16 +406,20 @@ async function cloudSync() {
   }
 }
 
-function cloudSyncNow() {
-  cloudSync();
-  // Also sync all named saves
-  const saves = getSaves();
-  for (const [name, save] of Object.entries(saves)) {
-    pushSaveToCloud(name, save.data);
+async function cloudSyncNow() {
+  try {
+    await cloudSync();
+    // Also sync all named saves
+    const saves = getSaves();
+    await Promise.all(Object.entries(saves).map(([name, save]) => pushSaveToCloud(name, save.data)));
+    // Sync photos both directions (push first, then pull)
+    await pushAllPhotosToCloud();
+    await pullPhotosFromCloud();
+    showToast('Sync complete');
+  } catch (e) {
+    console.error('Full sync error:', e);
+    showToast('Sync failed', true);
   }
-  // Sync photos both directions
-  pushAllPhotosToCloud();
-  pullPhotosFromCloud();
 }
 
 async function pushSaveToCloud(name, data) {
@@ -582,11 +560,13 @@ async function generatePairingCode() {
   await supabaseClient.from('device_links').delete()
     .eq('user_id', currentUser.id).eq('claimed', false);
 
+  const canPair = document.getElementById('pairCanPairToggle')?.checked || false;
   const code = generateCode();
   const { error } = await supabaseClient.from('device_links').insert({
     code,
     refresh_token: session.refresh_token,
-    user_id: currentUser.id
+    user_id: currentUser.id,
+    can_pair: canPair
   });
   if (error) { showToast('Failed to create pairing code.', true); console.error(error); return; }
 
@@ -656,7 +636,7 @@ async function claimDeviceLink() {
 
   try {
     const { data, error } = await supabaseClient.from('device_links')
-      .select('refresh_token,user_id').eq('code', code).single();
+      .select('refresh_token,user_id,can_pair').eq('code', code).single();
 
     if (error || !data) {
       showCloudMsg(msgEl, 'Invalid or expired code.', true);
@@ -675,6 +655,10 @@ async function claimDeviceLink() {
 
     // Mark as claimed (now authenticated as the same user)
     await supabaseClient.from('device_links').update({ claimed: true }).eq('code', code);
+
+    // Store pairing permissions locally
+    localStorage.setItem('rv_inspect_paired', 'true');
+    localStorage.setItem('rv_inspect_can_pair', data.can_pair ? 'true' : 'false');
 
     input.value = '';
     msgEl.className = 'cloud-msg';
@@ -735,7 +719,10 @@ function handlePairParam() {
   // Clean the URL immediately (credentials should not linger)
   history.replaceState(null, '', window.location.pathname);
   // If already logged in, no need to pair
-  if (currentUser) return;
+  if (currentUser) {
+    showToast('Already signed in');
+    return;
+  }
   // Save Supabase config if provided and not already configured
   if (sbUrl && sbKey && !loadBYOConfig()) {
     localStorage.setItem(BYO_CONFIG_KEY, JSON.stringify({ url: sbUrl, key: sbKey }));
@@ -789,14 +776,21 @@ if (typeof window.supabase !== 'undefined') {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./service-worker.js').catch(() => {});
   // Auto-reload when a new service worker activates (iOS PWA fix)
-  if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.addEventListener('message', e => {
-      if (e.data?.type === 'SW_UPDATED') {
-        window.location.reload();
-      }
-    });
-  }
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'SW_UPDATED') {
+      window.location.reload();
+    }
+  });
 }
+
+// Event delegation for save slot buttons (attached once)
+document.getElementById('saveSlots').addEventListener('click', e => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const name = decodeURIComponent(btn.dataset.name);
+  if (btn.dataset.action === 'load') loadSave(name);
+  else if (btn.dataset.action === 'delete') deleteSave(name);
+});
 
 // Handle ?pair= URL param after init
 handlePairParam();

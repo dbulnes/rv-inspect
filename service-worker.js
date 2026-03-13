@@ -9,9 +9,9 @@
  * Bump CACHE_NAME whenever you change index.html or manifest.json so that
  * returning users pick up the new version instead of seeing stale cache.
  */
-const CACHE_NAME = 'rv-inspect-v10';
+const CACHE_NAME = 'rv-inspect-v15';
 const ASSETS = ['./index.html', './manifest.json', './checklist-data.js', './app.js', './cloud.js'];
-const CDN_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
@@ -20,12 +20,19 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
-     .then(() => self.clients.matchAll().then(clients =>
-       clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' }))
-     ))
+    caches.keys().then(keys => {
+      const oldKeys = keys.filter(k => k !== CACHE_NAME);
+      const hadPreviousCache = oldKeys.length > 0;
+      return Promise.all(oldKeys.map(k => caches.delete(k))).then(() => hadPreviousCache);
+    }).then(hadPreviousCache => {
+      return self.clients.claim().then(() => {
+        if (hadPreviousCache) {
+          self.clients.matchAll().then(clients =>
+            clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' }))
+          );
+        }
+      });
+    })
   );
 });
 
@@ -44,8 +51,8 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Supabase API calls: network only, no caching
-  if (url.includes('supabase.co')) {
+  // Non-GET requests (API calls) and Supabase API calls: network only, no caching
+  if (e.request.method !== 'GET' || url.includes('supabase.co') || url.includes('supabase.in')) {
     e.respondWith(fetch(e.request));
     return;
   }
