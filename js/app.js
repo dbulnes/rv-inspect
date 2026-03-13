@@ -501,95 +501,90 @@ async function pushAllPhotosToCloud() {
 }
 
 // ====== VIN BARCODE SCANNER ======
-// Uses the BarcodeDetector API to read VIN barcodes (Code 39 / Code 128) from
-// the device camera. On browsers without native support (iOS Safari/Chrome),
-// a WASM-based polyfill is loaded on demand from CDN (~200KB, cached by SW).
-let scannerStream = null;
-let scannerAnimFrame = null;
+// Uses BarcodeDetector API to read VIN barcodes (Code 39 / Code 128).
+// On mobile: captures photo via file input, decodes from image.
+// Polyfill loaded via script tag for browsers without native support (iOS).
 
-async function ensureBarcodeDetector() {
-  if ('BarcodeDetector' in window) return true;
-  const status = document.getElementById('scannerStatus');
-  if (status) status.textContent = 'Loading barcode scanner...';
-  try {
-    await import('https://cdn.jsdelivr.net/npm/barcode-detector@2/dist/es/polyfill.min.js');
-    return 'BarcodeDetector' in window;
-  } catch (e) {
-    return false;
-  }
-}
-
-// Generic barcode/QR scanner — accepts formats, a status message, and a callback.
-// callback(rawValue) should return true to accept the result and stop scanning.
-let scannerCallback = null;
-async function startScan(formats, statusMsg, failMsg, callback) {
-  const overlay = document.getElementById('scannerOverlay');
-  const video = document.getElementById('scannerVideo');
-  const status = document.getElementById('scannerStatus');
-  scannerCallback = callback;
-  overlay.classList.add('show');
-  status.textContent = 'Loading scanner...';
-
-  if (!(await ensureBarcodeDetector())) {
-    status.textContent = failMsg;
-    setTimeout(() => stopScan(), 2000);
-    return;
-  }
-
-  try {
-    scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    video.srcObject = scannerStream;
-    await video.play();
-    status.textContent = statusMsg;
-
-    const detector = new BarcodeDetector({ formats });
-    const scan = async () => {
-      if (!scannerStream) return;
-      try {
-        const barcodes = await detector.detect(video);
-        if (barcodes.length > 0) {
-          const value = barcodes[0].rawValue.trim();
-          if (scannerCallback && scannerCallback(value)) {
-            stopScan();
-            return;
-          }
-        }
-      } catch (e) {}
-      scannerAnimFrame = requestAnimationFrame(scan);
+let barcodePolyfillLoaded = false;
+function loadBarcodePolyfill() {
+  if ('BarcodeDetector' in window) return Promise.resolve(true);
+  if (barcodePolyfillLoaded) return Promise.resolve('BarcodeDetector' in window);
+  return new Promise(resolve => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/barcode-detector@2/dist/es/polyfill.min.js';
+    script.type = 'module';
+    script.onload = () => {
+      barcodePolyfillLoaded = true;
+      // Polyfill registers asynchronously — wait for it
+      const check = () => {
+        if ('BarcodeDetector' in window) resolve(true);
+        else setTimeout(check, 50);
+      };
+      setTimeout(check, 100);
     };
-    scannerAnimFrame = requestAnimationFrame(scan);
-  } catch (e) {
-    status.textContent = 'Camera access denied.';
-    setTimeout(() => stopScan(), 2000);
-  }
-}
-
-function startVinScan() {
-  startScan(['code_39', 'code_128'], 'Point camera at VIN barcode...', 'Barcode scanning not available. Please enter VIN manually.', value => {
-    const vin = value.toUpperCase();
-    if (vin.length >= 11) {
-      const vinInput = document.querySelector('[data-info="vin"]');
-      vinInput.value = vin;
-      state.info.vin = vin;
-      autoSave();
-      return true;
-    }
-    return false;
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
   });
 }
 
-function stopScan() {
-  if (scannerAnimFrame) cancelAnimationFrame(scannerAnimFrame);
-  scannerAnimFrame = null;
-  scannerCallback = null;
-  if (scannerStream) {
-    scannerStream.getTracks().forEach(t => t.stop());
-    scannerStream = null;
-  }
-  document.getElementById('scannerVideo').srcObject = null;
-  document.getElementById('scannerOverlay').classList.remove('show');
+function setVinValue(vin) {
+  const vinInput = document.querySelector('[data-info="vin"]');
+  vinInput.value = vin;
+  state.info.vin = vin;
+  autoSave();
+}
+
+function startVinScan() {
+  const fileInput = document.getElementById('vinFileInput');
+  fileInput.value = '';
+  fileInput.onchange = async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    showToast('Reading barcode...');
+
+    try {
+      if (!(await loadBarcodePolyfill())) {
+        showToast('Barcode scanning not available on this device.', true);
+        return;
+      }
+
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+      URL.revokeObjectURL(img.src);
+
+      const detector = new BarcodeDetector({ formats: ['code_39', 'code_128'] });
+
+      // Try multiple scales for reliability with high-res photos
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const sizes = [1200, 800, 1600];
+      let result = null;
+      for (const maxDim of sizes) {
+        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        canvas.width = Math.round(img.naturalWidth * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const barcodes = await detector.detect(canvas);
+        if (barcodes.length > 0) {
+          const vin = barcodes[0].rawValue.trim().toUpperCase();
+          if (vin.length >= 11) { result = vin; break; }
+        }
+      }
+
+      if (!result) {
+        showToast('No VIN barcode found. Try a clearer photo.', true);
+        return;
+      }
+
+      setVinValue(result);
+      showToast('VIN scanned: ' + result);
+    } catch (e) {
+      console.error('VIN scan error:', e);
+      showToast('Failed to read barcode.', true);
+    }
+  };
+  fileInput.click();
 }
 
 function updateBadge(sectionId) {

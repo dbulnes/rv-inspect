@@ -43,7 +43,7 @@
       <div class="info-field"><label>Asking Price</label><input type="text" data-info="price" placeholder="$"></div>
     </div>
     <div class="info-grid">
-      <div class="info-field"><label>VIN</label><div class="vin-field-row"><input type="text" data-info="vin" placeholder="VIN"><button class="scan-btn" onclick="startVinScan()" title="Scan VIN barcode">📷</button></div></div>
+      <div class="info-field"><label>VIN</label><div class="vin-field-row"><input type="text" data-info="vin" placeholder="VIN"><button class="scan-btn" onclick="startVinScan()" title="Scan VIN barcode">📷</button><input type="file" id="vinFileInput" accept="image/*" style="display:none"></div></div>
       <div class="info-field"><label>Mileage/Hours</label><input type="text" data-info="mileage" placeholder="Mileage"></div>
     </div>
   </div>
@@ -103,14 +103,6 @@
 
 <!-- Hidden file input for photo capture -->
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
-
-<!-- VIN Barcode Scanner -->
-<div class="scanner-overlay" id="scannerOverlay">
-  <video id="scannerVideo" playsinline></video>
-  <div class="scanner-guide"></div>
-  <p class="scanner-status" id="scannerStatus">Point camera at VIN barcode...</p>
-  <button class="scanner-cancel" onclick="stopScan()">Cancel</button>
-</div>
 
 <!-- Cloud Modal -->
 <div class="modal-overlay" id="cloudModal" onclick="closeCloudModal(event)">
