@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RV Inspect">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='36' fill='%231a1a2e'/><text x='90' y='70' text-anchor='middle' font-size='50'>🏕️</text><text x='90' y='120' text-anchor='middle' fill='white' font-size='22' font-family='system-ui'>INSPECT</text></svg>">
+<title>Micro Minnie Inspection</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f0f1a; --surface: #1a1a2e; --surface2: #242442;
+  --accent: #4f8cff; --accent2: #6c63ff; --warn: #ff6b6b;
+  --ok: #51cf66; --text: #e8e8f0; --text2: #8888a8;
+  --radius: 12px;
+  color-scheme: dark;
+}
+html { font-size: 16px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 20px);
+  -webkit-text-size-adjust: 100%;
+}
+h1 { font-size: 1.3rem; font-weight: 700; }
+h2 { font-size: 1.1rem; font-weight: 600; margin: 0; }
+
+/* Header */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--surface); border-bottom: 1px solid #2a2a4a;
+  padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top));
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+}
+.header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.progress-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: 2px; transition: width .3s; }
+.progress-text { font-size: .75rem; color: var(--text2); margin-top: 4px; text-align: right; }
+
+/* Toolbar buttons */
+.toolbar { display: flex; gap: 6px; }
+.btn {
+  background: var(--surface2); border: 1px solid #3a3a5a; color: var(--text);
+  border-radius: 8px; padding: 6px 10px; font-size: .8rem; cursor: pointer;
+  display: flex; align-items: center; gap: 4px; white-space: nowrap;
+  transition: background .15s;
+}
+.btn:active { background: var(--accent2); }
+.btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Info fields */
+.info-section {
+  background: var(--surface); border-radius: var(--radius);
+  margin: 12px; padding: 14px; display: grid; gap: 10px;
+}
+.info-field label { display: block; font-size: .7rem; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.info-field input {
+  width: 100%; background: var(--surface2); border: 1px solid #3a3a5a;
+  color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: .9rem;
+  outline: none;
+}
+.info-field input:focus { border-color: var(--accent); }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* Sections */
+.section {
+  margin: 12px; background: var(--surface); border-radius: var(--radius);
+  overflow: hidden;
+}
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; cursor: pointer; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.section-header:active { background: var(--surface2); }
+.section-badge {
+  font-size: .7rem; padding: 2px 8px; border-radius: 10px;
+  background: var(--surface2); color: var(--text2); white-space: nowrap;
+}
+.section-badge.complete { background: #1a3a1a; color: var(--ok); }
+.section-badge.has-issues { background: #3a1a1a; color: var(--warn); }
+.section-content { display: none; padding: 0 12px 12px; }
+.section.open .section-content { display: block; }
+.section-chevron { transition: transform .2s; color: var(--text2); font-size: .8rem; }
+.section.open .section-chevron { transform: rotate(90deg); }
+.priority-tag {
+  font-size: .6rem; padding: 2px 6px; border-radius: 4px;
+  background: #3a1a1a; color: var(--warn); font-weight: 600;
+  margin-left: 6px;
+}
+
+/* Check items */
+.check-item {
+  padding: 10px 0; border-bottom: 1px solid #1f1f3a;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.check-item:last-child { border-bottom: none; }
+.check-row { display: flex; align-items: flex-start; gap: 10px; }
+.check-box {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 6px;
+  border: 2px solid #3a3a5a; background: var(--surface2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 14px; transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.check-box.checked { background: var(--ok); border-color: var(--ok); }
+.check-box.issue { background: var(--warn); border-color: var(--warn); }
+.check-box.na { background: var(--text2); border-color: var(--text2); opacity: .5; }
+.check-label {
+  flex: 1; font-size: .88rem; line-height: 1.4; padding-top: 2px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.check-label.critical { color: var(--warn); font-weight: 600; }
+.check-note {
+  width: 100%; background: var(--surface2); border: 1px solid #2a2a4a;
+  color: var(--text); border-radius: 8px; padding: 6px 10px;
+  font-size: .8rem; resize: vertical; min-height: 32px;
+  font-family: inherit; outline: none; display: none;
+}
+.check-note.visible { display: block; }
+.note-toggle {
+  font-size: .7rem; color: var(--accent); cursor: pointer;
+  padding: 2px 0; align-self: flex-start;
+}
+
+/* Input items */
+.input-item { padding: 8px 0; border-bottom: 1px solid #1f1f3a; }
+.input-item label { font-size: .8rem; color: var(--text2); display: block; margin-bottom: 4px; }
+.input-item input, .input-item textarea {
+  width: 100%; background: var(--surface2); border: 1px solid #2a2a4a;
+  color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: .85rem;
+  font-family: inherit; outline: none;
+}
+.input-item input:focus, .input-item textarea:focus { border-color: var(--accent); }
+
+/* Red flags */
+.red-flag { background: #2a1015; border: 1px solid #4a1a1a; border-radius: 8px; padding: 10px; margin: 6px 0; }
+
+/* Summary section */
+.summary-card {
+  margin: 12px; background: var(--surface); border-radius: var(--radius);
+  padding: 16px; display: none;
+}
+.summary-card.visible { display: block; }
+.summary-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.stat-box { background: var(--surface2); border-radius: 8px; padding: 10px; text-align: center; }
+.stat-num { font-size: 1.5rem; font-weight: 700; }
+.stat-label { font-size: .65rem; color: var(--text2); text-transform: uppercase; margin-top: 2px; }
+.stat-ok .stat-num { color: var(--ok); }
+.stat-issue .stat-num { color: var(--warn); }
+.stat-pending .stat-num { color: var(--text2); }
+.summary-issues { margin-top: 12px; }
+.summary-issues h3 { font-size: .85rem; color: var(--warn); margin-bottom: 8px; }
+.summary-issue-item { font-size: .82rem; padding: 4px 0; border-bottom: 1px solid #1f1f3a; }
+.overall-select { margin-top: 12px; }
+.overall-select label { font-size: .8rem; color: var(--text2); display: block; margin-bottom: 6px; }
+.radio-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.radio-btn {
+  padding: 6px 12px; border-radius: 8px; font-size: .8rem;
+  background: var(--surface2); border: 1px solid #3a3a5a; color: var(--text);
+  cursor: pointer; transition: all .15s;
+}
+.radio-btn.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+.radio-btn.warn-selected { background: var(--warn); border-color: var(--warn); color: #fff; }
+
+/* Nav tabs at bottom */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  background: var(--surface); border-top: 1px solid #2a2a4a;
+  display: flex; padding: 6px 12px; padding-bottom: max(6px, env(safe-area-inset-bottom));
+  gap: 4px;
+}
+.nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 6px 4px; border: none; background: none;
+  color: var(--text2); font-size: .6rem; cursor: pointer; border-radius: 8px;
+}
+.nav-btn.active { color: var(--accent); }
+.nav-btn:active { background: var(--surface2); }
+.nav-icon { font-size: 1.2rem; }
+
+/* Views */
+.view { display: none; padding-bottom: 70px; }
+.view.active { display: block; }
+
+/* Modal */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+  align-items: flex-end; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--surface); border-radius: 16px 16px 0 0;
+  width: 100%; max-width: 500px; max-height: 70vh; overflow-y: auto;
+  padding: 20px; padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+.modal h3 { margin-bottom: 12px; }
+.save-slot {
+  background: var(--surface2); border-radius: 10px; padding: 12px;
+  margin: 8px 0; cursor: pointer; border: 1px solid #3a3a5a;
+}
+.save-slot:active { border-color: var(--accent); }
+.save-slot-name { font-size: .9rem; font-weight: 600; }
+.save-slot-date { font-size: .7rem; color: var(--text2); margin-top: 2px; }
+.save-slot-actions { display: flex; gap: 8px; margin-top: 8px; }
+.save-slot-btn {
+  font-size: .75rem; padding: 4px 10px; border-radius: 6px;
+  border: 1px solid #3a3a5a; background: var(--surface); color: var(--text);
+  cursor: pointer;
+}
+.save-slot-btn.delete { color: var(--warn); border-color: #4a1a1a; }
+.save-slot-btn:active { opacity: .7; }
+.new-save { margin-top: 12px; }
+.new-save input {
+  width: 100%; background: var(--surface2); border: 1px solid #3a3a5a;
+  color: var(--text); border-radius: 8px; padding: 10px; font-size: .9rem;
+  outline: none; margin-bottom: 8px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-row">
+    <h1>🏕️ Micro Minnie Inspection</h1>
+    <div class="toolbar">
+      <button class="btn" onclick="showSaveModal()">💾</button>
+      <button class="btn" onclick="showSummary()">📋</button>
+    </div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="progress-text" id="progressText">0 / 0</div>
+</div>
+
+<!-- Checklist View -->
+<div class="view active" id="viewChecklist">
+
+  <!-- Info Fields -->
+  <div class="info-section">
+    <h2>Inspection Info</h2>
+    <div class="info-grid">
+      <div class="info-field"><label>Date</label><input type="date" data-info="date"></div>
+      <div class="info-field"><label>Location</label><input type="text" data-info="location" placeholder="Location"></div>
+    </div>
+    <div class="info-grid">
+      <div class="info-field"><label>Seller</label><input type="text" data-info="seller" placeholder="Seller name"></div>
+      <div class="info-field"><label>Asking Price</label><input type="text" data-info="price" placeholder="$"></div>
+    </div>
+    <div class="info-grid">
+      <div class="info-field"><label>VIN</label><input type="text" data-info="vin" placeholder="VIN"></div>
+      <div class="info-field"><label>Mileage/Hours</label><input type="text" data-info="mileage" placeholder="Mileage"></div>
+    </div>
+  </div>
+
+  <div id="sectionsContainer"></div>
+</div>
+
+<!-- Summary View -->
+<div class="summary-card" id="summaryCard">
+  <h2>Inspection Summary</h2>
+  <div class="summary-stats" id="summaryStats"></div>
+  <div class="summary-issues" id="summaryIssues"></div>
+  <div class="overall-select">
+    <label>Overall Condition</label>
+    <div class="radio-group" id="conditionGroup"></div>
+  </div>
+  <div class="overall-select" style="margin-top:16px">
+    <label>Recommended Action</label>
+    <div class="radio-group" id="actionGroup"></div>
+  </div>
+  <div class="input-item" style="margin-top:16px">
+    <label>Major Issues Found</label>
+    <textarea rows="3" data-summary="majorIssues" placeholder="List major issues..."></textarea>
+  </div>
+  <div class="input-item" style="margin-top:8px">
+    <label>Minor Issues Found</label>
+    <textarea rows="3" data-summary="minorIssues" placeholder="List minor issues..."></textarea>
+  </div>
+  <div class="input-item" style="margin-top:8px">
+    <label>Estimated Repair Costs</label>
+    <input type="text" data-summary="repairCosts" placeholder="$">
+  </div>
+  <button class="btn btn-accent" style="width:100%;justify-content:center;margin-top:16px;padding:12px" onclick="exportSummary()">📤 Export Summary as Text</button>
+</div>
+
+<!-- Save/Load Modal -->
+<div class="modal-overlay" id="saveModal" onclick="closeSaveModal(event)">
+  <div class="modal">
+    <h3>💾 Save / Load Inspection</h3>
+    <div id="saveSlots"></div>
+    <div class="new-save">
+      <input type="text" id="newSaveName" placeholder="New save name...">
+      <button class="btn btn-accent" style="width:100%;justify-content:center;padding:10px" onclick="saveNew()">Save Current Inspection</button>
+    </div>
+    <button class="btn" style="width:100%;justify-content:center;margin-top:8px;padding:10px" onclick="closeSaveModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- Bottom Nav -->
+<div class="bottom-nav">
+  <button class="nav-btn active" onclick="switchView('checklist',this)"><span class="nav-icon">✅</span>Checklist</button>
+  <button class="nav-btn" onclick="switchView('summary',this)"><span class="nav-icon">📋</span>Summary</button>
+</div>
+
+<script>
+// ====== CHECKLIST DATA ======
+const SECTIONS = [
+  {
+    id: 'ext_body', title: 'Fiberglass Body & Structure', icon: '🏠',
+    items: [
+      'Check entire exterior for delamination (bulges/bubbles)',
+      'Inspect all seams and joints for proper caulking',
+      'Examine for cracks, dents, or stress fractures',
+      'Look for paint fading or discoloration',
+      'Check corners and edges for separation',
+      {text: 'CRITICAL: Check for any signs of roof leaks (common issue)', critical: true}
+    ]
+  },
+  {
+    id: 'roof', title: 'Roof System', icon: '🔝', priority: true,
+    items: [
+      'Inspect entire roof membrane for cracks, tears, or punctures',
+      'Check all roof penetrations (vents, AC, antenna) for proper sealing',
+      'Verify condition of roof-mounted AC unit',
+      'Look for soft spots or sponginess (water intrusion)',
+      'Check rubber roof material condition',
+      'Inspect roof ladder mounting points'
+    ]
+  },
+  {
+    id: 'windows_doors', title: 'Windows & Doors', icon: '🪟',
+    items: [
+      'Test all windows open/close smoothly',
+      'Check all window seals and weatherstripping',
+      'Verify window latches and locks function',
+      'Note: Windows are single-pane (less insulation)',
+      'Check bedroom window crank (prone to failure)',
+      'Verify entry door seal is intact',
+      'Test door locks, latches, and deadbolt',
+      'Check door alignment',
+      'Inspect screen door and latch'
+    ]
+  },
+  {
+    id: 'tires', title: 'Tires & Wheels', icon: '🛞',
+    items: [
+      {text: 'Tire 1 DOT date / Condition', input: true, inputLabel: 'DOT date & condition'},
+      {text: 'Tire 2 DOT date / Condition', input: true, inputLabel: 'DOT date & condition'},
+      'Check for uneven wear, dry rot, sidewall cracks',
+      {text: 'Verify tire pressure', input: true, inputLabel: 'L: ___ psi  R: ___ psi'},
+      'Check tread depth (min 4/32")',
+      'Inspect wheel bearings for play',
+      'Check lug nuts for proper torque',
+      'Examine brakes and pads',
+      'Test electric brake connection'
+    ]
+  },
+  {
+    id: 'frame', title: 'Frame & Undercarriage', icon: '🔩',
+    items: [
+      'Inspect frame rails for rust or corrosion',
+      'Check axles for alignment and damage',
+      'Examine suspension components',
+      'Check hitch and tongue area structure',
+      'Test all four stabilizer jacks',
+      'Test electric tongue jack operation',
+      'Check battery box mounting',
+      'Inspect underbelly liner for holes or tears',
+      'Verify all mounting hardware secure'
+    ]
+  },
+  {
+    id: 'hitch', title: 'Hitch & Towing Components', icon: '🔗',
+    items: [
+      'Inspect hitch coupler (2-5/16" ball)',
+      'Test coupler latch mechanism',
+      'Check safety chains and mounting points',
+      'Test breakaway switch and cable',
+      'Test brake lights',
+      'Test turn signals (left and right)',
+      'Test running lights',
+      'Test reverse lights',
+      'Test 7-pin connector with tow vehicle'
+    ]
+  },
+  {
+    id: 'awning', title: 'Awning System', icon: '⛱️',
+    items: [
+      'Fully extend awning - operates smoothly',
+      'Check fabric for tears, mildew, fading',
+      'Test LED lighting in awning',
+      'Test awning motor and controller',
+      'Check awning wiring cover (prone to falling off)',
+      'Verify mounting hardware secure',
+      'Check arms extend and lock properly',
+      'Test wind sensor if equipped'
+    ]
+  },
+  {
+    id: 'storage', title: 'Storage Compartments', icon: '📦',
+    items: [
+      'Open and test all exterior compartment latches',
+      'Check for water stains or rust inside',
+      'Verify doors seal properly',
+      'Check hinges and gas struts',
+      'Check propane compartment ventilation',
+      'Test outdoor shower hose',
+      'Check dump valve access'
+    ]
+  },
+  {
+    id: 'water_damage', title: 'Water Damage (Interior)', icon: '💧', priority: true,
+    items: [
+      {text: 'CRITICAL: Inspect entire ceiling for stains/soft spots', critical: true},
+      'Check walls around all windows for moisture',
+      {text: 'CRITICAL: Press floor throughout - check for soft spots', critical: true},
+      'Look under dinette for sawdust (moisture damage)',
+      'Look under bed for sawdust',
+      'Check all corners and seams for separation',
+      'Check cabinetry for water damage or swelling',
+      'Check walls for proper attachment',
+      {text: 'Moisture meter reading (if available)', input: true, inputLabel: 'Reading'}
+    ]
+  },
+  {
+    id: 'plumbing', title: 'Plumbing System', icon: '🚿',
+    items: [
+      'Check under kitchen sink - plumbing connections (common factory defect)',
+      'Check under bathroom sink - plumbing connections',
+      'Look for sawdust around sink plumbing',
+      'Test kitchen sink faucet hot and cold',
+      'Check kitchen faucet nozzle (prone to breakage)',
+      'Test bathroom sink faucet hot and cold',
+      'Check bathroom hot water knob (plastic, prone to breaking)',
+      'Test shower on/off valve (common failure point)',
+      'Turn on water pump - listen for proper operation',
+      'Check for leaks while pump running',
+      'Verify pump cycles and builds pressure',
+      'Test city water connection',
+      'Test outdoor shower',
+      'Test toilet flush mechanism',
+      'Check toilet hoses (proper length, not bent/kinked)'
+    ]
+  },
+  {
+    id: 'water_heater', title: 'Water Heater System', icon: '🔥',
+    items: [
+      'Access panel under bathroom sink',
+      'Check wiring connections secure (often loose from factory)',
+      'Test main inlet valve (common failure)',
+      'Test electric mode (120V) - heats properly',
+      'Test propane mode - ignites and heats',
+      {text: 'Check water temperature reaches 120-140°F', input: true, inputLabel: 'Temp °F'},
+      'Check for leaks around tank and connections',
+      'Check relief valve condition',
+      'Test bypass valve operation'
+    ]
+  },
+  {
+    id: 'tanks', title: 'Tank Systems', icon: '🪣',
+    items: [
+      'Test black tank valve (known to bind/fail)',
+      'Test gray tank valve',
+      'Check protective liner underneath',
+      'Test tank sensors (if equipped)',
+      'Check dump hose condition',
+      'Check tank vent pipes on roof',
+      'Look for leaks or staining around tanks'
+    ]
+  },
+  {
+    id: 'kitchen', title: 'Kitchen Appliances', icon: '🍳',
+    items: [
+      'Test refrigerator on electric mode (common cooling issues)',
+      'Test refrigerator on propane mode',
+      {text: 'Wait 2-4 hours - check temperature', input: true, inputLabel: 'Temp °F'},
+      'Check refrigerator door seals and latches',
+      'Check freezer cools adequately',
+      'Test stove burner 1 on propane',
+      'Test stove burner 2 on propane',
+      'Test stove burner 3 on propane',
+      'Check propane regulator (consistent flame)',
+      'Test oven operation and temperature',
+      'Test oven vent fan (fan blade secure on spindle)',
+      'Test microwave/convection oven',
+      'Check microwave door latch (opens while driving issue)',
+      'Test range hood fan and light',
+      'Test all kitchen cabinet/drawer mechanisms'
+    ]
+  },
+  {
+    id: 'climate', title: 'Climate Control', icon: '❄️',
+    items: [
+      'Test furnace on propane (inconsistency issues reported)',
+      'Verify furnace ignites reliably',
+      'Check airflow from all vents',
+      'Run AC unit - verify cooling (13,500 BTU)',
+      {text: 'Let AC run 15-20 min - temp drop', input: true, inputLabel: 'Temp drop °F'},
+      'Listen for unusual AC noises',
+      'Test all roof vents open/close',
+      'Test fantastic fan (if equipped)',
+      'Check all vent screens intact'
+    ]
+  },
+  {
+    id: 'electrical', title: 'Electrical System', icon: '⚡',
+    items: [
+      'Test ALL outlets with circuit tester (common power issues)',
+      {text: 'Kitchen outlets', input: true, inputLabel: 'Status'},
+      {text: 'Bathroom outlets', input: true, inputLabel: 'Status'},
+      {text: 'Bedroom outlets', input: true, inputLabel: 'Status'},
+      {text: 'Living area outlets', input: true, inputLabel: 'Status'},
+      'Test converter/charger operation',
+      'Test GFCI outlets and reset buttons',
+      'Test all interior lights (LED flickering common)',
+      'Test bathroom light specifically (frequent flickering)',
+      'Verify 12V system functions',
+      'Verify 120V system functions',
+      {text: 'Test battery charging with multimeter', input: true, inputLabel: 'Voltage'},
+      'Check battery condition and connections',
+      'Check breaker panel - no tripped breakers',
+      'Check for burnt wires or electrical smells',
+      'Test USB charging ports',
+      'Test all switches and dimmers'
+    ]
+  },
+  {
+    id: 'propane', title: 'Propane System', icon: '🔶',
+    items: [
+      'Test propane regulator at stove (pressure consistent)',
+      'Check automatic changeover valve',
+      'Inspect propane hoses (not too short or aggressively bent)',
+      'Test propane detector alarm',
+      'Check for propane smell',
+      'Test stove on propane',
+      'Test oven on propane',
+      'Test water heater on propane',
+      'Test furnace on propane',
+      'Check propane tank mounting',
+      'Check propane compartment ventilation',
+      {text: 'Propane tank 1 cert date', input: true, inputLabel: 'Date'},
+      {text: 'Propane tank 2 cert date', input: true, inputLabel: 'Date'}
+    ]
+  },
+  {
+    id: 'interior', title: 'Interior Features', icon: '🛋️',
+    items: [
+      'Test dinette table mechanisms',
+      'Check cushion condition',
+      'Open all cabinets - smooth operation',
+      'Open all drawers - smooth operation',
+      'Check pull-down shade holders (especially dinette - prone to loosening)',
+      'Check window treatment mounting',
+      'Test all cabinet latches',
+      'Test bedroom vent fan',
+      'Test TV mounting and connections',
+      'Test AV system (AM/FM/CD/DVD/USB/Bluetooth)',
+      'Inspect flooring for damage or stains',
+      'Check upholstery for tears or stains'
+    ]
+  },
+  {
+    id: 'full_electrical', title: 'Full Electrical Test', icon: '🔌',
+    items: [
+      'Connect to 30-amp shore power',
+      'Run AC + microwave + water heater simultaneously',
+      'No breakers trip under load',
+      {text: 'Check voltage at outlets (should be 110-120V)', input: true, inputLabel: 'Voltage'},
+      {text: 'Check converter output (should be 13.2-13.8V)', input: true, inputLabel: 'Voltage'},
+      'All systems maintain power'
+    ]
+  },
+  {
+    id: 'full_water', title: 'Full Water Test', icon: '💦',
+    items: [
+      'Connect to city water with pressure regulator',
+      'Turn on all faucets - consistent pressure',
+      'Water heater heats on electric',
+      'Fill fresh water tank - test pump',
+      'Run all fixtures simultaneously',
+      'Check for any leaks throughout test'
+    ]
+  },
+  {
+    id: 'full_propane', title: 'Full Propane Test', icon: '🔥',
+    items: [
+      'Open propane tanks',
+      'Test automatic changeover',
+      'Run all propane appliances together',
+      'No gas smell or hissing',
+      'Propane detector stays quiet'
+    ]
+  },
+  {
+    id: 'docs', title: 'Documentation Review', icon: '📄',
+    items: [
+      'Request maintenance records',
+      'Check warranty status (1-year limited from purchase date)',
+      'Verify clean title - no liens/salvage',
+      {text: 'VIN recall check', input: true, inputLabel: 'Results'},
+      'Ask about winterization history',
+      'Get list of modifications/repairs',
+      'Obtain owner\'s manual and appliance manuals',
+      'Review previous inspection reports (if any)'
+    ]
+  },
+  {
+    id: 'seller_q', title: 'Questions for Seller', icon: '🗣️',
+    items: [
+      {text: 'Has trailer ever leaked? Where? Repairs done?', input: true, inputLabel: 'Answer'},
+      {text: 'Any warranty claims or repairs?', input: true, inputLabel: 'Answer'},
+      {text: 'Storage method (covered/uncovered/climate-controlled)?', input: true, inputLabel: 'Answer'},
+      {text: 'Maintenance performed (roof seal, bearings, etc.)?', input: true, inputLabel: 'Answer'},
+      {text: 'Any known issues or concerns?', input: true, inputLabel: 'Answer'},
+      {text: 'Reason for selling?', input: true, inputLabel: 'Answer'},
+      {text: 'What\'s included (hoses, accessories)?', input: true, inputLabel: 'Answer'}
+    ]
+  },
+  {
+    id: 'red_flags', title: 'Red Flags - Dealbreakers', icon: '🚩', priority: true,
+    items: [
+      {text: 'Multiple roof leak locations', critical: true},
+      {text: 'Plumbing with wrong fittings', critical: true},
+      {text: 'Excessive sawdust under sinks', critical: true},
+      {text: 'Black tank valve binding', critical: true},
+      {text: 'Water heater not heating', critical: true},
+      {text: 'Multiple appliance failures', critical: true},
+      {text: 'Many broken plastic components', critical: true},
+      {text: 'Severe LED flickering throughout', critical: true},
+      {text: 'Improperly routed propane hoses', critical: true}
+    ]
+  },
+  {
+    id: 'tools', title: 'Tools Needed', icon: '🧰',
+    items: [
+      'Flashlight (bright LED)',
+      'Multimeter or circuit tester',
+      'Moisture meter (optional)',
+      'Ladder for roof access',
+      'Creeper or towel for undercarriage',
+      'Camera/smartphone for photos',
+      'This checklist',
+      'Tire pressure gauge',
+      'Level',
+      'Gloves and knee pads'
+    ]
+  }
+];
+
+// ====== STATE ======
+let state = { info: {}, checks: {}, notes: {}, inputs: {}, summary: {} };
+
+// ====== RENDER ======
+function renderSections() {
+  const container = document.getElementById('sectionsContainer');
+  container.innerHTML = '';
+  SECTIONS.forEach(section => {
+    const div = document.createElement('div');
+    div.className = 'section';
+    div.id = 'section_' + section.id;
+
+    const itemCount = section.items.length;
+    div.innerHTML = `
+      <div class="section-header" onclick="toggleSection('${section.id}')">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span>${section.icon}</span>
+          <h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${section.title}</h2>
+          ${section.priority ? '<span class="priority-tag">HIGH PRIORITY</span>' : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="section-badge" id="badge_${section.id}">0/${itemCount}</span>
+          <span class="section-chevron">▶</span>
+        </div>
+      </div>
+      <div class="section-content" id="content_${section.id}">
+        ${section.items.map((item, i) => renderItem(section.id, item, i)).join('')}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+  updateProgress();
+}
+
+function renderItem(sectionId, item, idx) {
+  const key = `${sectionId}_${idx}`;
+  const isObj = typeof item === 'object';
+  const text = isObj ? item.text : item;
+  const isCritical = isObj && item.critical;
+  const hasInput = isObj && item.input;
+  const inputLabel = isObj && item.inputLabel ? item.inputLabel : '';
+  const checkState = state.checks[key] || 'unchecked';
+  const noteVal = state.notes[key] || '';
+  const inputVal = state.inputs[key] || '';
+
+  let checkIcon = '';
+  if (checkState === 'ok') checkIcon = '✓';
+  else if (checkState === 'issue') checkIcon = '✗';
+  else if (checkState === 'na') checkIcon = '—';
+
+  let checkClass = '';
+  if (checkState === 'ok') checkClass = 'checked';
+  else if (checkState === 'issue') checkClass = 'issue';
+  else if (checkState === 'na') checkClass = 'na';
+
+  return `
+    <div class="check-item ${isCritical && sectionId === 'red_flags' ? 'red-flag' : ''}">
+      <div class="check-row">
+        <div class="check-box ${checkClass}" onclick="cycleCheck('${key}')" id="box_${key}">${checkIcon}</div>
+        <span class="check-label ${isCritical ? 'critical' : ''}" onclick="cycleCheck('${key}')">${text}</span>
+      </div>
+      ${hasInput ? `<input class="check-note visible" style="display:block" placeholder="${inputLabel}" value="${escHtml(inputVal)}" oninput="setInput('${key}',this.value)">` : ''}
+      <span class="note-toggle" onclick="toggleNote('${key}')">+ note</span>
+      <textarea class="check-note ${noteVal ? 'visible' : ''}" id="note_${key}" placeholder="Add note..." oninput="setNote('${key}',this.value)">${escHtml(noteVal)}</textarea>
+    </div>
+  `;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ====== INTERACTIONS ======
+function toggleSection(id) {
+  document.getElementById('section_' + id).classList.toggle('open');
+}
+
+function cycleCheck(key) {
+  const states = ['unchecked', 'ok', 'issue', 'na'];
+  const cur = state.checks[key] || 'unchecked';
+  const next = states[(states.indexOf(cur) + 1) % states.length];
+  state.checks[key] = next;
+
+  const box = document.getElementById('box_' + key);
+  box.className = 'check-box';
+  box.textContent = '';
+  if (next === 'ok') { box.classList.add('checked'); box.textContent = '✓'; }
+  else if (next === 'issue') { box.classList.add('issue'); box.textContent = '✗'; }
+  else if (next === 'na') { box.classList.add('na'); box.textContent = '—'; }
+
+  updateBadge(key.split('_').slice(0, -1).join('_'));
+  updateProgress();
+  autoSave();
+}
+
+function toggleNote(key) {
+  const el = document.getElementById('note_' + key);
+  el.classList.toggle('visible');
+  if (el.classList.contains('visible')) el.focus();
+}
+
+function setNote(key, val) { state.notes[key] = val; autoSave(); }
+function setInput(key, val) { state.inputs[key] = val; autoSave(); }
+
+function updateBadge(sectionId) {
+  const section = SECTIONS.find(s => s.id === sectionId);
+  if (!section) return;
+  const total = section.items.length;
+  let done = 0, issues = 0;
+  section.items.forEach((_, i) => {
+    const s = state.checks[`${sectionId}_${i}`];
+    if (s && s !== 'unchecked') done++;
+    if (s === 'issue') issues++;
+  });
+  const badge = document.getElementById('badge_' + sectionId);
+  badge.textContent = `${done}/${total}`;
+  badge.className = 'section-badge';
+  if (done === total && issues === 0) badge.classList.add('complete');
+  else if (issues > 0) badge.classList.add('has-issues');
+}
+
+function updateProgress() {
+  let total = 0, done = 0;
+  SECTIONS.forEach(s => {
+    s.items.forEach((_, i) => {
+      total++;
+      const st = state.checks[`${s.id}_${i}`];
+      if (st && st !== 'unchecked') done++;
+    });
+  });
+  const pct = total ? (done / total * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `${done} / ${total} (${Math.round(pct)}%)`;
+}
+
+// ====== INFO FIELDS ======
+document.querySelectorAll('[data-info]').forEach(el => {
+  el.addEventListener('input', () => {
+    state.info[el.dataset.info] = el.value;
+    autoSave();
+  });
+});
+
+function loadInfoFields() {
+  document.querySelectorAll('[data-info]').forEach(el => {
+    if (state.info[el.dataset.info]) el.value = state.info[el.dataset.info];
+  });
+}
+
+// ====== SUMMARY ======
+function showSummary() {
+  switchView('summary', document.querySelectorAll('.nav-btn')[1]);
+}
+
+function buildSummary() {
+  let total = 0, ok = 0, issues = 0, na = 0, pending = 0;
+  const issueList = [];
+
+  SECTIONS.forEach(s => {
+    s.items.forEach((item, i) => {
+      total++;
+      const key = `${s.id}_${i}`;
+      const st = state.checks[key] || 'unchecked';
+      if (st === 'ok') ok++;
+      else if (st === 'issue') {
+        issues++;
+        const text = typeof item === 'object' ? item.text : item;
+        const note = state.notes[key] || '';
+        issueList.push({ section: s.title, text, note });
+      }
+      else if (st === 'na') na++;
+      else pending++;
+    });
+  });
+
+  const statsEl = document.getElementById('summaryStats');
+  statsEl.innerHTML = `
+    <div class="stat-box stat-ok"><div class="stat-num">${ok}</div><div class="stat-label">Passed</div></div>
+    <div class="stat-box stat-issue"><div class="stat-num">${issues}</div><div class="stat-label">Issues</div></div>
+    <div class="stat-box stat-pending"><div class="stat-num">${pending}</div><div class="stat-label">Pending</div></div>
+  `;
+
+  const issuesEl = document.getElementById('summaryIssues');
+  if (issueList.length) {
+    issuesEl.innerHTML = `<h3>⚠️ Issues Found (${issueList.length})</h3>` +
+      issueList.map(i => `<div class="summary-issue-item"><strong>${i.section}:</strong> ${i.text}${i.note ? ' — <em>' + escHtml(i.note) + '</em>' : ''}</div>`).join('');
+  } else {
+    issuesEl.innerHTML = '<p style="color:var(--ok);font-size:.85rem">No issues flagged yet.</p>';
+  }
+
+  // Condition radio
+  const conditions = ['Excellent', 'Good', 'Fair', 'Poor'];
+  document.getElementById('conditionGroup').innerHTML = conditions.map(c =>
+    `<span class="radio-btn ${state.summary.condition === c ? (c === 'Poor' ? 'warn-selected' : 'selected') : ''}" onclick="setRadio('condition','${c}',this)">${c}</span>`
+  ).join('');
+
+  // Action radio
+  const actions = ['Purchase as-is', 'Negotiate price', 'Request repairs', 'Walk away'];
+  document.getElementById('actionGroup').innerHTML = actions.map(a =>
+    `<span class="radio-btn ${state.summary.action === a ? (a === 'Walk away' ? 'warn-selected' : 'selected') : ''}" onclick="setRadio('action','${a}',this)">${a}</span>`
+  ).join('');
+
+  // Text fields
+  document.querySelectorAll('[data-summary]').forEach(el => {
+    el.value = state.summary[el.dataset.summary] || '';
+    el.oninput = () => { state.summary[el.dataset.summary] = el.value; autoSave(); };
+  });
+}
+
+function setRadio(field, value, el) {
+  state.summary[field] = value;
+  const warn = (value === 'Poor' || value === 'Walk away');
+  el.parentElement.querySelectorAll('.radio-btn').forEach(b => b.className = 'radio-btn');
+  el.classList.add(warn ? 'warn-selected' : 'selected');
+  autoSave();
+}
+
+function exportSummary() {
+  let text = '=== MICRO MINNIE 1708FB INSPECTION SUMMARY ===\n\n';
+
+  // Info
+  const info = state.info;
+  if (info.date) text += `Date: ${info.date}\n`;
+  if (info.location) text += `Location: ${info.location}\n`;
+  if (info.seller) text += `Seller: ${info.seller}\n`;
+  if (info.price) text += `Asking Price: ${info.price}\n`;
+  if (info.vin) text += `VIN: ${info.vin}\n`;
+  if (info.mileage) text += `Mileage: ${info.mileage}\n`;
+  text += '\n';
+
+  // Stats
+  let ok = 0, issues = 0, pending = 0;
+  SECTIONS.forEach(s => s.items.forEach((_, i) => {
+    const st = state.checks[`${s.id}_${i}`] || 'unchecked';
+    if (st === 'ok') ok++;
+    else if (st === 'issue') issues++;
+    else if (st === 'unchecked') pending++;
+  }));
+  text += `RESULTS: ${ok} passed | ${issues} issues | ${pending} pending\n\n`;
+
+  // Issues by section
+  const issuesBySection = {};
+  SECTIONS.forEach(s => s.items.forEach((item, i) => {
+    const key = `${s.id}_${i}`;
+    if (state.checks[key] === 'issue') {
+      if (!issuesBySection[s.title]) issuesBySection[s.title] = [];
+      const t = typeof item === 'object' ? item.text : item;
+      const note = state.notes[key] || '';
+      issuesBySection[s.title].push(t + (note ? ` — ${note}` : ''));
+    }
+  }));
+
+  if (Object.keys(issuesBySection).length) {
+    text += '--- ISSUES FOUND ---\n';
+    for (const [sec, items] of Object.entries(issuesBySection)) {
+      text += `\n${sec}:\n`;
+      items.forEach(i => text += `  ✗ ${i}\n`);
+    }
+    text += '\n';
+  }
+
+  // Notes
+  const allNotes = [];
+  SECTIONS.forEach(s => s.items.forEach((item, i) => {
+    const key = `${s.id}_${i}`;
+    if (state.notes[key]) {
+      const t = typeof item === 'object' ? item.text : item;
+      allNotes.push({ section: s.title, text: t, note: state.notes[key] });
+    }
+    if (state.inputs[key]) {
+      const t = typeof item === 'object' ? item.text : item;
+      allNotes.push({ section: s.title, text: t, note: state.inputs[key] });
+    }
+  }));
+
+  if (allNotes.length) {
+    text += '--- NOTES & MEASUREMENTS ---\n';
+    allNotes.forEach(n => text += `${n.section} > ${n.text}: ${n.note}\n`);
+    text += '\n';
+  }
+
+  // Summary fields
+  if (state.summary.condition) text += `Overall Condition: ${state.summary.condition}\n`;
+  if (state.summary.action) text += `Recommended Action: ${state.summary.action}\n`;
+  if (state.summary.majorIssues) text += `Major Issues: ${state.summary.majorIssues}\n`;
+  if (state.summary.minorIssues) text += `Minor Issues: ${state.summary.minorIssues}\n`;
+  if (state.summary.repairCosts) text += `Estimated Repair Costs: ${state.summary.repairCosts}\n`;
+
+  // Copy or share
+  if (navigator.share) {
+    navigator.share({ title: 'RV Inspection Summary', text }).catch(() => copyText(text));
+  } else {
+    copyText(text);
+  }
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => alert('Summary copied to clipboard!')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    alert('Summary copied to clipboard!');
+  });
+}
+
+// ====== VIEW SWITCHING ======
+function switchView(view, btn) {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  document.getElementById('viewChecklist').classList.toggle('active', view === 'checklist');
+  const summary = document.getElementById('summaryCard');
+  summary.classList.toggle('active', view === 'summary');
+  summary.classList.toggle('visible', view === 'summary');
+
+  if (view === 'summary') buildSummary();
+}
+
+// ====== SAVE / LOAD ======
+const STORAGE_KEY = 'rv_inspect_saves';
+const AUTOSAVE_KEY = 'rv_inspect_autosave';
+
+function autoSave() {
+  localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state));
+}
+
+function autoLoad() {
+  const data = localStorage.getItem(AUTOSAVE_KEY);
+  if (data) {
+    try { state = JSON.parse(data); } catch(e) {}
+  }
+}
+
+function getSaves() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+
+function showSaveModal() {
+  const saves = getSaves();
+  const slotsEl = document.getElementById('saveSlots');
+  const keys = Object.keys(saves).sort((a,b) => (saves[b].ts || 0) - (saves[a].ts || 0));
+
+  if (keys.length === 0) {
+    slotsEl.innerHTML = '<p style="color:var(--text2);font-size:.85rem;padding:8px 0">No saved inspections yet.</p>';
+  } else {
+    slotsEl.innerHTML = keys.map(k => {
+      const s = saves[k];
+      const d = s.ts ? new Date(s.ts).toLocaleString() : 'Unknown date';
+      return `
+        <div class="save-slot">
+          <div class="save-slot-name">${escHtml(k)}</div>
+          <div class="save-slot-date">${d}</div>
+          <div class="save-slot-actions">
+            <button class="save-slot-btn" onclick="loadSave('${escHtml(k)}')">Load</button>
+            <button class="save-slot-btn" onclick="overwriteSave('${escHtml(k)}')">Overwrite</button>
+            <button class="save-slot-btn delete" onclick="deleteSave('${escHtml(k)}')">Delete</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('newSaveName').value = state.info.location ? `${state.info.location} - ${state.info.date || 'Inspection'}` : '';
+  document.getElementById('saveModal').classList.add('show');
+}
+
+function closeSaveModal(e) {
+  if (!e || e.target === e.currentTarget) {
+    document.getElementById('saveModal').classList.remove('show');
+  }
+}
+
+function saveNew() {
+  const name = document.getElementById('newSaveName').value.trim();
+  if (!name) { alert('Enter a name for this save'); return; }
+  const saves = getSaves();
+  saves[name] = { data: JSON.parse(JSON.stringify(state)), ts: Date.now() };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+  closeSaveModal();
+  alert('Saved!');
+}
+
+function overwriteSave(name) {
+  if (!confirm(`Overwrite "${name}"?`)) return;
+  const saves = getSaves();
+  saves[name] = { data: JSON.parse(JSON.stringify(state)), ts: Date.now() };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+  closeSaveModal();
+  alert('Saved!');
+}
+
+function loadSave(name) {
+  if (!confirm(`Load "${name}"? Current unsaved progress will be lost.`)) return;
+  const saves = getSaves();
+  if (saves[name]) {
+    state = JSON.parse(JSON.stringify(saves[name].data));
+    autoSave();
+    renderSections();
+    loadInfoFields();
+    SECTIONS.forEach(s => updateBadge(s.id));
+    closeSaveModal();
+  }
+}
+
+function deleteSave(name) {
+  if (!confirm(`Delete "${name}"?`)) return;
+  const saves = getSaves();
+  delete saves[name];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+  showSaveModal();
+}
+
+function resetAll() {
+  if (!confirm('Reset all progress?')) return;
+  state = { info: {}, checks: {}, notes: {}, inputs: {}, summary: {} };
+  autoSave();
+  renderSections();
+  loadInfoFields();
+}
+
+// ====== INIT ======
+autoLoad();
+renderSections();
+loadInfoFields();
+SECTIONS.forEach(s => updateBadge(s.id));
+
+// Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
