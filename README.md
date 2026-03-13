@@ -57,6 +57,7 @@ No `npm install` needed — tests use only Node.js built-in modules (no dependen
 │   ├── checklist-data.js       # Checklist content (SECTIONS array)
 │   └── cloud.js                # Save/load, Supabase sync, auth
 ├── docs/                       # Reference docs and SQL setup
+├── supabase/functions/         # Supabase Edge Functions (PDF generation)
 ├── tests/                      # Tests (Node.js built-in test runner)
 ├── .github/workflows/ci.yml    # CI + GitHub Pages deploy
 ├── index.html                  # App markup
@@ -109,6 +110,33 @@ Instead of signing into email on every device, you can pair a second device usin
 2. On **Device B**: tap ☁️ → **Scan QR** (opens camera on mobile, file picker on desktop) — this auto-configures Supabase and signs in
 3. Device B is now signed in as the same user — no email or manual setup required
 4. By default, Device B **cannot** pair additional devices unless Device A granted that permission
+
+### PDF Export (Edge Function)
+
+PDF export uses a Supabase Edge Function for server-side generation. To enable it:
+
+1. Install the [Supabase CLI](https://supabase.com/docs/guides/cli)
+2. Link your project:
+   ```bash
+   supabase link --project-ref <your-project-ref>
+   ```
+3. Add the `inspection-pdfs` storage bucket (run in SQL Editor if not already done):
+   ```sql
+   insert into storage.buckets (id, name, public)
+   values ('inspection-pdfs', 'inspection-pdfs', false)
+   on conflict (id) do nothing;
+
+   create policy "Users manage own PDFs" on storage.objects
+     for all using (bucket_id = 'inspection-pdfs' and auth.uid()::text = (storage.foldername(name))[1])
+     with check (bucket_id = 'inspection-pdfs' and auth.uid()::text = (storage.foldername(name))[1]);
+   ```
+4. Deploy the function:
+   ```bash
+   supabase functions deploy generate-pdf
+   ```
+5. That's it — tapping **Export PDF** in the app will now generate a real PDF file, save it to Supabase Storage, and download it to your device.
+
+If the Edge Function is not deployed or the user isn't signed in, the app falls back to an HTML preview.
 
 ### How it works
 

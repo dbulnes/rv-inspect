@@ -881,11 +881,47 @@ function exportMarkdown() {
   showToast('Markdown exported');
 }
 
-// ---- PDF EXPORT (with photos) ----
+// ---- PDF EXPORT ----
+// Server-side: sends data to Supabase Edge Function which generates PDF with pdf-lib,
+// saves to Storage, and returns the file. Falls back to client-side HTML if not connected.
 async function exportPDF() {
-  showToast('Generating PDF…', false, 10000);
   const d = gatherExportData();
   const title = d.info.name || 'RV Inspection';
+
+  // Try server-side generation if Supabase is connected
+  if (supabaseClient && currentUser) {
+    showToast('Generating PDF…', false, 10000);
+    try {
+      const config = JSON.parse(localStorage.getItem('rv_inspect_supabase') || '{}');
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session && config.url) {
+        const resp = await fetch(`${config.url}/functions/v1/generate-pdf`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': config.key,
+          },
+          body: JSON.stringify(d),
+        });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const filename = (title.replace(/[^a-zA-Z0-9 _-]/g, '') || 'inspection').replace(/ /g, '_') + '.pdf';
+          downloadBlob(blob, filename);
+          const pdfUrl = resp.headers.get('X-PDF-URL');
+          showToast(pdfUrl ? 'PDF saved and downloaded' : 'PDF downloaded');
+          return;
+        }
+        console.error('PDF generation failed:', resp.status, await resp.text());
+      }
+    } catch (e) {
+      console.error('Server PDF error, falling back to HTML:', e);
+    }
+    showToast('Server PDF failed, opening HTML preview…', true);
+  }
+
+  // Fallback: client-side HTML preview
+  showToast('Generating preview…', false, 10000);
   const total = d.stats.ok + d.stats.issues + d.stats.pending + d.stats.na;
 
   // Collect all photos grouped by item key

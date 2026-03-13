@@ -73,6 +73,20 @@ describe('CI hash includes service-worker.js', () => {
   });
 });
 
+describe('supabase edge function', () => {
+  it('generate-pdf function exists', () => {
+    assert.ok(
+      fs.existsSync(path.join(root, 'supabase/functions/generate-pdf/index.ts')),
+      'generate-pdf edge function is missing'
+    );
+  });
+
+  it('setup.sql includes inspection-pdfs bucket', () => {
+    const sql = fs.readFileSync(path.join(root, 'docs/setup.sql'), 'utf8');
+    assert.ok(sql.includes('inspection-pdfs'), 'setup.sql must create inspection-pdfs bucket');
+  });
+});
+
 describe('manifest.json', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 

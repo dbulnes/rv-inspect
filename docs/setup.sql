@@ -46,7 +46,18 @@ create policy "Users manage own photos" on storage.objects
   with check (bucket_id = 'inspection-photos' and auth.uid()::text = (storage.foldername(name))[1]);
 
 -- ============================================================
--- 3. Device pairing (link another device via QR code)
+-- 3. PDF storage bucket
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('inspection-pdfs', 'inspection-pdfs', false)
+on conflict (id) do nothing;
+
+create policy "Users manage own PDFs" on storage.objects
+  for all using (bucket_id = 'inspection-pdfs' and auth.uid()::text = (storage.foldername(name))[1])
+  with check (bucket_id = 'inspection-pdfs' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- ============================================================
+-- 4. Device pairing (link another device via QR code)
 -- ============================================================
 create table if not exists device_links (
   id uuid primary key default gen_random_uuid(),
