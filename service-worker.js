@@ -21,19 +21,9 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys => {
-      const oldKeys = keys.filter(k => k !== CACHE_NAME);
-      const hadPreviousCache = oldKeys.length > 0;
-      return Promise.all(oldKeys.map(k => caches.delete(k))).then(() => hadPreviousCache);
-    }).then(hadPreviousCache => {
-      return self.clients.claim().then(() => {
-        if (hadPreviousCache) {
-          return self.clients.matchAll().then(clients =>
-            clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' }))
-          );
-        }
-      });
-    })
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
 });
 
@@ -49,6 +39,12 @@ self.addEventListener('fetch', e => {
         return resp;
       }).catch(() => caches.match(e.request))
     );
+    return;
+  }
+
+  // version.txt: always network-only so the page can detect new deploys
+  if (url.endsWith('/version.txt')) {
+    e.respondWith(fetch(e.request));
     return;
   }
 

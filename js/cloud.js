@@ -874,36 +874,25 @@ if (typeof window.supabase !== 'undefined') {
 
 // Service Worker
 if ('serviceWorker' in navigator) {
-  // Start message queue so Safari/iOS delivers SW messages
-  navigator.serviceWorker.startMessages?.();
-
-  navigator.serviceWorker.register('./service-worker.js').then(reg => {
-    // Check for updates every 60s and when app returns to foreground
-    setInterval(() => reg.update(), 60000);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') reg.update();
-    });
-
-    // Detect new SW from the page side (doesn't rely on SW postMessage)
-    function awaitNewSW(sw) {
-      sw.addEventListener('statechange', () => {
-        if (sw.state === 'activated') window.location.reload();
-      });
-    }
-    if (reg.waiting) window.location.reload();
-    if (reg.installing) awaitNewSW(reg.installing);
-    reg.addEventListener('updatefound', () => {
-      if (reg.installing) awaitNewSW(reg.installing);
-    });
-  }).catch(() => {});
-
-  // Belt-and-suspenders: also listen for SW_UPDATED message
-  navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data?.type === 'SW_UPDATED') {
-      window.location.reload();
-    }
-  });
+  navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
+
+// Version polling — detects new deploys reliably on all platforms (including iOS PWAs)
+// Fetches version.txt (never cached by SW) and force-refreshes if it differs from APP_VERSION.
+async function checkForUpdate() {
+  try {
+    const resp = await fetch('./version.txt?_=' + Date.now());
+    if (!resp.ok) return;
+    const remote = (await resp.text()).trim();
+    if (remote && remote !== 'dev' && remote !== APP_VERSION) {
+      forceRefresh();
+    }
+  } catch {}
+}
+setInterval(checkForUpdate, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkForUpdate();
+});
 
 // Force refresh — clears SW cache and reloads from network
 async function forceRefresh() {

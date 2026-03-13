@@ -57,12 +57,8 @@ describe('service-worker.js', () => {
     assert.ok(sw.includes('./manifest.json'), 'SW missing manifest.json');
   });
 
-  it('chains postMessage into waitUntil promise', () => {
-    // The matchAll().then(postMessage) must be returned so waitUntil keeps the SW alive
-    assert.ok(
-      sw.includes('return self.clients.matchAll()'),
-      'matchAll call must be returned into the waitUntil chain'
-    );
+  it('bypasses cache for version.txt', () => {
+    assert.ok(sw.includes('version.txt'), 'SW must handle version.txt as network-only');
   });
 });
 

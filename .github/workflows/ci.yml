@@ -43,8 +43,10 @@ jobs:
           grep -q "rv-inspect-${HASH}" service-worker.js || { echo "ERROR: CACHE_NAME stamp failed"; exit 1; }
           SHORT_SHA=$(git rev-parse --short HEAD)
           PKG_VERSION=$(node -p "require('./package.json').version")
-          sed -i "s/const APP_VERSION = .*/const APP_VERSION = '${PKG_VERSION} (${SHORT_SHA})';/" js/app.js
+          APP_VER="${PKG_VERSION} (${SHORT_SHA})"
+          sed -i "s/const APP_VERSION = .*/const APP_VERSION = '${APP_VER}';/" js/app.js
           grep -q "${SHORT_SHA}" js/app.js || { echo "ERROR: APP_VERSION stamp failed"; exit 1; }
+          echo "${APP_VER}" > version.txt
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
