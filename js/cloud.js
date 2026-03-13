@@ -751,22 +751,9 @@ async function claimPairURL(pairUrl) {
   }
 }
 
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-// Scan QR — desktop: live camera overlay; mobile: camera capture / file picker
+// Scan QR — opens file picker (camera on mobile, file upload on desktop),
+// then extracts QR code from the selected image via BarcodeDetector.
 function scanPairQR() {
-  if (!isMobile) {
-    // Desktop: live camera scanner overlay
-    closeCloudModal();
-    startScan(['qr_code'], 'Point camera at QR code...', 'QR scanning not available on this device.', async value => {
-      const url = value.trim();
-      showCloudModal();
-      await claimPairURL(url);
-      return true;
-    });
-    return;
-  }
-  // Mobile: file input with capture (opens camera, allows photo library too)
   const fileInput = document.getElementById('pairQRFileInput');
   fileInput.value = '';
   fileInput.onchange = async () => {
@@ -792,8 +779,7 @@ function scanPairQR() {
         return;
       }
 
-      const value = barcodes[0].rawValue.trim();
-      await claimPairURL(value);
+      await claimPairURL(barcodes[0].rawValue.trim());
     } catch (e) {
       console.error('QR scan error:', e);
       showCloudMsg(msgEl, 'Failed to read QR code from image.', true);
