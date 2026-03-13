@@ -880,19 +880,46 @@ if (typeof window.supabase !== 'undefined') {
 
 // Service Worker
 if ('serviceWorker' in navigator) {
+  // Start message queue so Safari/iOS delivers SW messages
+  navigator.serviceWorker.startMessages?.();
+
   navigator.serviceWorker.register('./service-worker.js').then(reg => {
     // Check for updates every 60s and when app returns to foreground
     setInterval(() => reg.update(), 60000);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') reg.update();
     });
+
+    // Detect new SW from the page side (doesn't rely on SW postMessage)
+    function awaitNewSW(sw) {
+      sw.addEventListener('statechange', () => {
+        if (sw.state === 'activated') window.location.reload();
+      });
+    }
+    if (reg.waiting) window.location.reload();
+    if (reg.installing) awaitNewSW(reg.installing);
+    reg.addEventListener('updatefound', () => {
+      if (reg.installing) awaitNewSW(reg.installing);
+    });
   }).catch(() => {});
-  // Auto-reload when a new service worker activates (iOS PWA fix)
+
+  // Belt-and-suspenders: also listen for SW_UPDATED message
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data?.type === 'SW_UPDATED') {
       window.location.reload();
     }
   });
+}
+
+// Force refresh — clears SW cache and reloads from network
+async function forceRefresh() {
+  if ('serviceWorker' in navigator) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.unregister();
+  }
+  window.location.reload();
 }
 
 // Event delegation for save slot buttons (attached once)
