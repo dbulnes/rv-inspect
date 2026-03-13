@@ -5,6 +5,13 @@
 // If unnamed, auto-save uses a generated name like "Inspection 1".
 const STORAGE_KEY = 'rv_inspect_saves';
 
+// Refresh the full UI after state changes (used after loads, syncs, and reconciles)
+function refreshUI() {
+  renderSections();
+  loadInfoFields();
+  SECTIONS.forEach(s => updateBadge(s.id));
+}
+
 // Ensure currentSaveName is set. If the checklist has no name, generate one.
 function ensureSaveName() {
   const nameFromField = (state.info.name || '').trim();
@@ -100,12 +107,11 @@ function showSaveModal() {
   document.getElementById('saveModal').classList.add('show');
 
   // Fetch cloud-only saves
-  const keys = Object.keys(saves);
-  loadCloudSavesIntoModal(keys);
+  loadCloudSavesIntoModal();
 }
 
 let _cloudFetchId = 0;
-async function loadCloudSavesIntoModal(localKeys) {
+async function loadCloudSavesIntoModal() {
   if (!supabaseClient || !currentUser) return;
   const fetchId = ++_cloudFetchId;
 
@@ -169,9 +175,7 @@ function newInspection() {
   currentSaveName = null;
   ensureSaveName();
   autoSave();
-  renderSections();
-  loadInfoFields();
-  SECTIONS.forEach(s => updateBadge(s.id));
+  refreshUI();
   closeSaveModal();
   showToast('New inspection started');
 }
@@ -183,9 +187,7 @@ function loadSave(name) {
     ensureByField();
     currentSaveName = name;
     autoSave();
-    renderSections();
-    loadInfoFields();
-    SECTIONS.forEach(s => updateBadge(s.id));
+    refreshUI();
     closeSaveModal();
     pullPhotosFromCloud();
   }
@@ -207,21 +209,9 @@ async function deleteSave(name) {
     currentSaveName = null;
     ensureSaveName();
     autoSave();
-    renderSections();
-    loadInfoFields();
-    SECTIONS.forEach(s => updateBadge(s.id));
+    refreshUI();
   }
   showToast(`Deleted "${name}"`);
-}
-
-async function resetAll() {
-  if (!await appConfirm('Reset all progress?')) return;
-  state = freshState();
-  currentSaveName = null;
-  ensureSaveName();
-  autoSave();
-  renderSections();
-  loadInfoFields();
 }
 
 // ====== CLOUD SYNC (SUPABASE) ======
@@ -383,8 +373,7 @@ function updateCloudUI() {
     loggedOut.style.display = 'block';
   }
 
-  if (!supabaseClient) { dot.className = 'sync-dot'; }
-  else if (!currentUser) { dot.className = 'sync-dot'; }
+  if (!supabaseClient || !currentUser) { dot.className = 'sync-dot'; }
 }
 
 function setSyncStatus(status) {
@@ -464,9 +453,7 @@ async function cloudSyncNow() {
       if (currentSaveName && saves[currentSaveName]) {
         state = JSON.parse(JSON.stringify(saves[currentSaveName].data));
         ensureByField();
-        renderSections();
-        loadInfoFields();
-        SECTIONS.forEach(s => updateBadge(s.id));
+        refreshUI();
       }
     }
 
@@ -510,9 +497,7 @@ async function pushSaveToCloud(name, data) {
         if (name === currentSaveName) {
           state = JSON.parse(JSON.stringify(existing.state));
           ensureByField();
-          renderSections();
-          loadInfoFields();
-          SECTIONS.forEach(s => updateBadge(s.id));
+          refreshUI();
         }
         return;
       }
@@ -569,9 +554,7 @@ async function reconcileOnLoad() {
         if (currentSaveName && localSaves[currentSaveName]) {
           state = JSON.parse(JSON.stringify(localSaves[currentSaveName].data));
           ensureByField();
-          renderSections();
-          loadInfoFields();
-          SECTIONS.forEach(s => updateBadge(s.id));
+          refreshUI();
         }
       }
     }
@@ -872,9 +855,7 @@ window.addEventListener('online', () => {
 })();
 
 autoLoad();
-renderSections();
-loadInfoFields();
-SECTIONS.forEach(s => updateBadge(s.id));
+refreshUI();
 openPhotoDB().then(() => loadAllThumbs()).catch(() => {});
 
 // Init Supabase if configured
