@@ -751,7 +751,19 @@ async function claimPairURL(pairUrl) {
   }
 }
 
-// QR code capture (camera on mobile) or upload from file
+// Live camera QR scan using the scanner overlay
+function scanPairQR() {
+  closeCloudModal();
+  const msgEl = document.getElementById('pairClaimMsg');
+  startScan(['qr_code'], 'Point camera at QR code...', 'QR scanning not available on this device.', async value => {
+    const url = value.trim();
+    showCloudModal();
+    await claimPairURL(url);
+    return true;
+  });
+}
+
+// Upload QR image from file picker
 function uploadPairQR() {
   const fileInput = document.getElementById('pairQRFileInput');
   fileInput.value = '';
