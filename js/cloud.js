@@ -538,11 +538,13 @@ async function cloudSyncNow() {
     }
 
     // Push all local-newer saves in parallel (simple upserts, no pre-check needed)
-    await Promise.all(toPush.map(({ name, data }) =>
-      supabaseClient.from('inspections').upsert({
-        user_id: currentUser.id, name, state: { ...data, _deviceId: DEVICE_ID }
-      }, { onConflict: 'user_id,name' }).catch(e => console.error('Push error:', name, e))
-    ));
+    await Promise.all(toPush.map(async ({ name, data }) => {
+      try {
+        await supabaseClient.from('inspections').upsert({
+          user_id: currentUser.id, name, state: { ...data, _deviceId: DEVICE_ID }
+        }, { onConflict: 'user_id,name' });
+      } catch (e) { console.error('Push error:', name, e); }
+    }));
 
     // Sync photos both directions (push first, then pull)
     await pushAllPhotosToCloud();
@@ -626,9 +628,11 @@ async function reconcileOnLoad() {
       // Push local-only saves to cloud (no pre-check needed — they don't exist in cloud)
       for (const [name, save] of Object.entries(localSaves)) {
         if (!cloudSaves.find(cs => cs.name === name)) {
-          supabaseClient.from('inspections').upsert({
-            user_id: currentUser.id, name, state: { ...save.data, _deviceId: DEVICE_ID }
-          }, { onConflict: 'user_id,name' }).catch(e => console.error('Push error:', name, e));
+          try {
+            await supabaseClient.from('inspections').upsert({
+              user_id: currentUser.id, name, state: { ...save.data, _deviceId: DEVICE_ID }
+            }, { onConflict: 'user_id,name' });
+          } catch (e) { console.error('Push error:', name, e); }
         }
       }
 
@@ -644,8 +648,10 @@ async function reconcileOnLoad() {
     }
 
     // Clean up legacy __autosave__ row if it exists
-    supabaseClient.from('inspections').delete()
-      .eq('user_id', currentUser.id).eq('name', '__autosave__').then(() => {});
+    try {
+      await supabaseClient.from('inspections').delete()
+        .eq('user_id', currentUser.id).eq('name', '__autosave__');
+    } catch {};
 
     await pullPhotosFromCloud();
     lastSyncTime = Date.now();

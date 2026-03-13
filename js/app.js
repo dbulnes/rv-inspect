@@ -442,7 +442,7 @@ async function loadAllThumbs() {
 // IndexedDB remains the local cache; cloud sync happens in the background.
 // Data URLs are converted to Blobs for upload and back for download.
 
-// Current save name as Storage folder path (no encoding — Supabase client handles it)
+// Current save name as Storage folder path
 function inspectionFolder() {
   return currentSaveName || '__autosave__';
 }
