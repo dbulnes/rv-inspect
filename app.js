@@ -439,16 +439,20 @@ async function ensureBarcodeDetector() {
   }
 }
 
-async function startVinScan() {
+// Generic barcode/QR scanner — accepts formats, a status message, and a callback.
+// callback(rawValue) should return true to accept the result and stop scanning.
+let scannerCallback = null;
+async function startScan(formats, statusMsg, failMsg, callback) {
   const overlay = document.getElementById('scannerOverlay');
   const video = document.getElementById('scannerVideo');
   const status = document.getElementById('scannerStatus');
+  scannerCallback = callback;
   overlay.classList.add('show');
   status.textContent = 'Loading scanner...';
 
   if (!(await ensureBarcodeDetector())) {
-    status.textContent = 'Barcode scanning not available. Please enter VIN manually.';
-    setTimeout(() => stopVinScan(), 2000);
+    status.textContent = failMsg;
+    setTimeout(() => stopScan(), 2000);
     return;
   }
 
@@ -458,22 +462,17 @@ async function startVinScan() {
     });
     video.srcObject = scannerStream;
     await video.play();
-    status.textContent = 'Point camera at VIN barcode...';
+    status.textContent = statusMsg;
 
-    const detector = new BarcodeDetector({ formats: ['code_39', 'code_128'] });
+    const detector = new BarcodeDetector({ formats });
     const scan = async () => {
       if (!scannerStream) return;
       try {
         const barcodes = await detector.detect(video);
         if (barcodes.length > 0) {
-          const vin = barcodes[0].rawValue.trim().toUpperCase();
-          if (vin.length >= 11) {
-            // VIN found — fill the field
-            const vinInput = document.querySelector('[data-info="vin"]');
-            vinInput.value = vin;
-            state.info.vin = vin;
-            autoSave();
-            stopVinScan();
+          const value = barcodes[0].rawValue.trim();
+          if (scannerCallback && scannerCallback(value)) {
+            stopScan();
             return;
           }
         }
@@ -482,14 +481,29 @@ async function startVinScan() {
     };
     scannerAnimFrame = requestAnimationFrame(scan);
   } catch (e) {
-    status.textContent = 'Camera access denied. Please enter VIN manually.';
-    setTimeout(() => stopVinScan(), 2000);
+    status.textContent = 'Camera access denied.';
+    setTimeout(() => stopScan(), 2000);
   }
 }
 
-function stopVinScan() {
+function startVinScan() {
+  startScan(['code_39', 'code_128'], 'Point camera at VIN barcode...', 'Barcode scanning not available. Please enter VIN manually.', value => {
+    const vin = value.toUpperCase();
+    if (vin.length >= 11) {
+      const vinInput = document.querySelector('[data-info="vin"]');
+      vinInput.value = vin;
+      state.info.vin = vin;
+      autoSave();
+      return true;
+    }
+    return false;
+  });
+}
+
+function stopScan() {
   if (scannerAnimFrame) cancelAnimationFrame(scannerAnimFrame);
   scannerAnimFrame = null;
+  scannerCallback = null;
   if (scannerStream) {
     scannerStream.getTracks().forEach(t => t.stop());
     scannerStream = null;

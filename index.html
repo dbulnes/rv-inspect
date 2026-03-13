@@ -327,13 +327,6 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
 .pair-countdown { font-size: .75rem; color: var(--text2); text-align: center; }
 .pair-qr { display: flex; justify-content: center; margin: 12px 0; }
 .pair-qr canvas, .pair-qr img { border-radius: 8px; }
-.pair-input-row { display: flex; gap: 8px; margin-top: 8px; }
-.pair-input-row input {
-  flex: 1; background: var(--surface2); border: 1px solid #3a3a5a; color: var(--text);
-  border-radius: 8px; padding: 10px; font-size: 1.1rem; font-family: 'SF Mono', 'Menlo', monospace;
-  letter-spacing: 2px; text-transform: uppercase; outline: none; text-align: center;
-}
-.pair-input-row input:focus { border-color: var(--accent); }
 .pair-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: var(--text2); font-size: .8rem; }
 .pair-divider::before, .pair-divider::after { content: ''; flex: 1; border-top: 1px solid #2a2a4a; }
 /* Conflict banner */
@@ -466,7 +459,7 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
   <video id="scannerVideo" playsinline></video>
   <div class="scanner-guide"></div>
   <p class="scanner-status" id="scannerStatus">Point camera at VIN barcode...</p>
-  <button class="scanner-cancel" onclick="stopVinScan()">Cancel</button>
+  <button class="scanner-cancel" onclick="stopScan()">Cancel</button>
 </div>
 
 <!-- Conflict Banner -->
@@ -489,13 +482,11 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
         <button class="btn btn-accent" style="width:100%;justify-content:center;padding:10px" onclick="sendMagicLink()">Send Magic Link</button>
         <div class="cloud-msg" id="magicLinkMsg"></div>
       </div>
-      <div class="pair-divider">or</div>
+      <div class="pair-divider">or link from another device</div>
       <div id="pairClaimSection">
-        <p style="font-size:.85rem;color:var(--text2);margin-bottom:8px">Have a pairing code?</p>
-        <div class="pair-input-row">
-          <input type="text" id="pairCodeInput" placeholder="ABCD-EFGH" maxlength="9" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false">
-          <button class="btn btn-accent" style="padding:10px 16px" onclick="claimDeviceLink()">Link</button>
-        </div>
+        <button class="btn" style="width:100%;justify-content:center;padding:10px" onclick="startPairQRScan()">📷 Scan QR Code</button>
+        <button class="btn" style="width:100%;justify-content:center;padding:10px;margin-top:8px" onclick="uploadPairQR()">🖼️ Upload QR Image</button>
+        <input type="file" id="pairQRFileInput" accept="image/*" style="display:none">
         <div class="cloud-msg" id="pairClaimMsg"></div>
       </div>
       <hr class="cloud-divider">
@@ -526,7 +517,7 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
         <div class="pair-qr" id="pairQR"></div>
         <p class="pair-countdown" id="pairCountdown"></p>
         <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn btn-accent" style="flex:1;justify-content:center;padding:10px" onclick="copyPairingCode()">Copy Code</button>
+          <button class="btn btn-accent" style="flex:1;justify-content:center;padding:10px" onclick="copyPairingLink()">Copy Link</button>
           <button class="btn" style="flex:1;justify-content:center;padding:10px" onclick="cancelDeviceLink()">Cancel</button>
         </div>
       </div>

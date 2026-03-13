@@ -312,7 +312,7 @@ function sendMagicLink() {
   const msgEl = document.getElementById('magicLinkMsg');
   if (!email) { showCloudMsg(msgEl, 'Enter your email address.', true); return; }
 
-  const redirectUrl = window.location.href.split('#')[0].split('?')[0];
+  const redirectUrl = getBaseUrl();
   supabaseClient.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectUrl } })
     .then(({ error }) => {
       if (error) showCloudMsg(msgEl, error.message, true);
@@ -600,12 +600,23 @@ function updateCountdown(expiresAt) {
   }
 }
 
-function copyPairingCode() {
+function getBaseUrl() {
+  return window.location.href.split('#')[0].split('?')[0];
+}
+
+function buildPairURL(code) {
+  const config = loadBYOConfig();
+  let url = getBaseUrl() + '?pair=' + code;
+  if (config) url += '&sb_url=' + encodeURIComponent(config.url) + '&sb_key=' + encodeURIComponent(config.key);
+  return url;
+}
+
+function copyPairingLink() {
   if (!currentPairCode) return;
-  navigator.clipboard.writeText(formatCode(currentPairCode)).then(() => {
-    showToast('Code copied!');
+  navigator.clipboard.writeText(buildPairURL(currentPairCode)).then(() => {
+    showToast('Link copied!');
   }).catch(() => {
-    showToast('Copy failed — tap code to select it.');
+    showToast('Copy failed.');
   });
 }
 
@@ -621,29 +632,39 @@ async function cancelDeviceLink() {
   document.getElementById('pairQR').innerHTML = '';
 }
 
-async function claimDeviceLink() {
-  const input = document.getElementById('pairCodeInput');
+// Claim a pairing URL — used by QR scan, QR upload, and ?pair= URL param
+async function claimPairURL(pairUrl) {
   const msgEl = document.getElementById('pairClaimMsg');
-  const code = input.value.toUpperCase().replace(/[-\s]/g, '');
-  if (code.length !== 8) { showCloudMsg(msgEl, 'Enter the 8-character code.', true); return; }
-
-  if (!supabaseClient) {
-    showCloudMsg(msgEl, 'Connect your Supabase project first (see setup below).', true);
-    return;
-  }
-
-  showCloudMsg(msgEl, 'Linking...', false);
-
   try {
+    const url = new URL(pairUrl);
+    const code = url.searchParams.get('pair');
+    if (!code) { showCloudMsg(msgEl, 'Invalid QR code — no pairing data found.', true); return; }
+
+    // Auto-configure Supabase from URL params
+    const sbUrl = url.searchParams.get('sb_url');
+    const sbKey = url.searchParams.get('sb_key');
+    if (sbUrl && sbKey && !loadBYOConfig()) {
+      localStorage.setItem(BYO_CONFIG_KEY, JSON.stringify({ url: sbUrl, key: sbKey }));
+      initSupabase();
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (!supabaseClient) {
+      showCloudMsg(msgEl, 'Could not connect to cloud. Try again.', true);
+      return;
+    }
+
+    showCloudMsg(msgEl, 'Linking...', false);
+    showCloudModal();
+
     const { data, error } = await supabaseClient.from('device_links')
-      .select('refresh_token,user_id,can_pair').eq('code', code).single();
+      .select('refresh_token,user_id,can_pair').eq('code', code.toUpperCase().replace(/[-\s]/g, '')).single();
 
     if (error || !data) {
       showCloudMsg(msgEl, 'Invalid or expired code.', true);
       return;
     }
 
-    // Use the refresh token to get a new session
     const { data: authData, error: authError } = await supabaseClient.auth.refreshSession({
       refresh_token: data.refresh_token
     });
@@ -653,21 +674,67 @@ async function claimDeviceLink() {
       return;
     }
 
-    // Mark as claimed (now authenticated as the same user)
     await supabaseClient.from('device_links').update({ claimed: true }).eq('code', code);
 
-    // Store pairing permissions locally
     localStorage.setItem('rv_inspect_paired', 'true');
     localStorage.setItem('rv_inspect_can_pair', data.can_pair ? 'true' : 'false');
 
-    input.value = '';
     msgEl.className = 'cloud-msg';
     showToast('Device linked!');
-    // onAuthStateChange will handle the rest (UI update, reconcile)
   } catch (e) {
     console.error('Claim error:', e);
-    showCloudMsg(msgEl, 'Something went wrong. Try again.', true);
+    showCloudMsg(msgEl, 'Invalid QR code.', true);
   }
+}
+
+// QR code scanning via camera (Device B scans Device A's QR)
+function startPairQRScan() {
+  document.getElementById('cloudModal').classList.remove('show');
+  startScan(['qr_code'], 'Point camera at pairing QR code...', 'QR scanning not available. Try uploading a screenshot instead.', value => {
+    try {
+      const url = new URL(value);
+      if (!url.searchParams.get('pair')) return false;
+      claimPairURL(value);
+      return true;
+    } catch (e) { return false; }
+  });
+}
+
+// QR code upload from image file (screenshot, saved QR, etc.)
+function uploadPairQR() {
+  const fileInput = document.getElementById('pairQRFileInput');
+  fileInput.value = '';
+  fileInput.onchange = async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const msgEl = document.getElementById('pairClaimMsg');
+    showCloudMsg(msgEl, 'Reading QR code...', false);
+
+    try {
+      if (!(await ensureBarcodeDetector())) {
+        showCloudMsg(msgEl, 'QR reading not available on this device.', true);
+        return;
+      }
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      const barcodes = await detector.detect(img);
+      URL.revokeObjectURL(img.src);
+
+      if (barcodes.length === 0) {
+        showCloudMsg(msgEl, 'No QR code found in image. Try a clearer screenshot.', true);
+        return;
+      }
+
+      const value = barcodes[0].rawValue.trim();
+      await claimPairURL(value);
+    } catch (e) {
+      console.error('QR upload error:', e);
+      showCloudMsg(msgEl, 'Failed to read QR code from image.', true);
+    }
+  };
+  fileInput.click();
 }
 
 // QR code library (loaded on demand)
@@ -708,34 +775,16 @@ function renderQRCode(code) {
   }
 }
 
-// Handle ?pair= URL parameter (Device B opens QR link)
+// Handle ?pair= URL parameter (Device B opens link from QR or shared URL)
 function handlePairParam() {
   const params = new URLSearchParams(window.location.search);
-  const pairCode = params.get('pair');
-  if (!pairCode) return;
-  // Auto-configure Supabase if credentials are in the URL
-  const sbUrl = params.get('sb_url');
-  const sbKey = params.get('sb_key');
-  // Clean the URL immediately (credentials should not linger)
+  if (!params.get('pair')) return;
+  // Reconstruct the full URL for claimPairURL, then clean address bar
+  const fullUrl = window.location.href.split('#')[0];
   history.replaceState(null, '', window.location.pathname);
-  // If already logged in, no need to pair
-  if (currentUser) {
-    showToast('Already signed in');
-    return;
-  }
-  // Save Supabase config if provided and not already configured
-  if (sbUrl && sbKey && !loadBYOConfig()) {
-    localStorage.setItem(BYO_CONFIG_KEY, JSON.stringify({ url: sbUrl, key: sbKey }));
-    initSupabase();
-  }
-  // Wait for Supabase to init, then auto-fill and open modal
-  setTimeout(() => {
-    showCloudModal();
-    const input = document.getElementById('pairCodeInput');
-    if (input) {
-      input.value = formatCode(pairCode.toUpperCase().replace(/[-\s]/g, ''));
-    }
-  }, 500);
+  if (currentUser) { showToast('Already signed in'); return; }
+  // Wait for Supabase JS to load, then claim
+  setTimeout(() => claimPairURL(fullUrl), 500);
 }
 
 // Online/offline listeners
