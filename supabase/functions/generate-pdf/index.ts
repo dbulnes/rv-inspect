@@ -349,7 +349,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const folder = `${user.id}/${baseName}`;
+    const folder = baseName;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `${baseName}_${timestamp}.pdf`;
     const storagePath = `${folder}/${filename}`;

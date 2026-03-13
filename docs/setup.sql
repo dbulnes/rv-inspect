@@ -40,10 +40,10 @@ insert into storage.buckets (id, name, public)
 values ('inspection-photos', 'inspection-photos', false)
 on conflict (id) do nothing;
 
--- RLS: users can only access photos in their own folder
-create policy "Users manage own photos" on storage.objects
-  for all using (bucket_id = 'inspection-photos' and auth.uid()::text = (storage.foldername(name))[1])
-  with check (bucket_id = 'inspection-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+-- RLS: any authenticated user can manage photos (paths are per-checklist, not per-user)
+create policy "Authenticated users manage photos" on storage.objects
+  for all using (bucket_id = 'inspection-photos' and auth.role() = 'authenticated')
+  with check (bucket_id = 'inspection-photos' and auth.role() = 'authenticated');
 
 -- ============================================================
 -- 3. PDF storage bucket
@@ -52,9 +52,9 @@ insert into storage.buckets (id, name, public)
 values ('inspection-pdfs', 'inspection-pdfs', false)
 on conflict (id) do nothing;
 
-create policy "Users manage own PDFs" on storage.objects
-  for all using (bucket_id = 'inspection-pdfs' and auth.uid()::text = (storage.foldername(name))[1])
-  with check (bucket_id = 'inspection-pdfs' and auth.uid()::text = (storage.foldername(name))[1]);
+-- PDFs are uploaded via service role (bypasses RLS); this policy allows authenticated read access
+create policy "Authenticated users read PDFs" on storage.objects
+  for select using (bucket_id = 'inspection-pdfs' and auth.role() = 'authenticated');
 
 -- ============================================================
 -- 4. Device pairing (link another device via QR code)

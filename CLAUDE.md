@@ -84,7 +84,7 @@ Optional cloud persistence via user-provided Supabase project (BYO model — no 
 - **Auth**: Email magic link via Supabase Auth.
 - **Schema**: `inspections` table (JSONB state, one row per named save per user) + `inspection-photos` Storage bucket + `inspection-pdfs` Storage bucket + `device_links` table (short-lived pairing codes).
 - **PDF export**: Server-side via Supabase Edge Function (`generate-pdf`). Uses `pdf-lib` to build PDF from structured data, saves to `inspection-pdfs` Storage bucket, returns signed URL + PDF bytes. On mobile, the client fetches from the signed URL (proper MIME type from Storage) and uses Web Share API for native save/share. Falls back to client-side HTML preview if Supabase is not connected.
-- **Photo sync**: Photos uploaded to Supabase Storage on capture, downloaded on save load. Path: `{user_id}/{inspection_name}/{item_key}_{index}.jpg`.
+- **Photo sync**: Photos uploaded to Supabase Storage on capture, downloaded on save load. Path: `{inspection_name}/{item_key}_{index}.jpg`.
 - **Sync**: Debounced (2s) upserts on every state change. Newest timestamp always wins — pushes check cloud `updated_at` before overwriting, pulls auto-accept cloud-newer data.
 - **Config**: Stored in `rv_inspect_supabase` localStorage key (`{ url, key }`).
 - **Device pairing**: Device A generates an 8-char code (stored in `device_links` with 5-min TTL). Device B scans QR or uploads QR image to authenticate via refresh token. QR URL includes `sb_url` and `sb_key` params so Device B auto-configures Supabase. Auto-syncs immediately after pairing. QR rendered via `qrcode-generator`, decoded via `jsQR` (both loaded on demand from CDN).

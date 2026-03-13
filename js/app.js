@@ -393,13 +393,13 @@ async function loadAllThumbs() {
 
 // ====== PHOTO CLOUD SYNC (Supabase Storage) ======
 // Photos are uploaded to a Supabase Storage bucket named "inspection-photos".
-// Path convention: {user_id}/{inspection_name}/{item_key}_{photo_index}.jpg
+// Path convention: {inspection_name}/{item_key}_{photo_index}.jpg
 // IndexedDB remains the local cache; cloud sync happens in the background.
 // Data URLs are converted to Blobs for upload and back for download.
 
 function photoStoragePath(itemKey, idx) {
   const inspectionName = encodeURIComponent(currentSaveName || '__autosave__');
-  return `${currentUser.id}/${inspectionName}/${itemKey}_${idx}.jpg`;
+  return `${inspectionName}/${itemKey}_${idx}.jpg`;
 }
 
 function dataUrlToBlob(dataUrl) {
@@ -434,7 +434,7 @@ async function deletePhotoFromCloud(itemKey, idx) {
 async function pullPhotosFromCloud() {
   if (!supabaseClient || !currentUser) return;
   const inspectionName = encodeURIComponent(currentSaveName || '__autosave__');
-  const folder = `${currentUser.id}/${inspectionName}`;
+  const folder = inspectionName;
   try {
     const { data: files, error } = await supabaseClient.storage
       .from('inspection-photos').list(folder);
