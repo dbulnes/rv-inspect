@@ -233,7 +233,6 @@ const BYO_CONFIG_KEY = 'rv_inspect_supabase';
 let supabaseClient = null;
 let currentUser = null;
 let lastSyncTime = null;
-let pendingCloudAutosave = null;
 
 function loadBYOConfig() {
   try { return JSON.parse(localStorage.getItem(BYO_CONFIG_KEY)); } catch { return null; }
@@ -429,11 +428,37 @@ async function cloudSyncNow() {
 async function pushSaveToCloud(name, data) {
   if (!supabaseClient || !currentUser) return;
   try {
+    const saves = getSaves();
+    const localTs = saves[name]?.ts || Date.now();
+    // Check if cloud version is newer before overwriting
+    const { data: existing } = await supabaseClient.from('inspections')
+      .select('updated_at')
+      .eq('user_id', currentUser.id).eq('name', name)
+      .maybeSingle();
+    if (existing) {
+      const cloudTs = new Date(existing.updated_at).getTime();
+      if (cloudTs > localTs) {
+        // Cloud is newer — don't overwrite, pull it instead
+        saves[name] = { data: (await supabaseClient.from('inspections')
+          .select('state').eq('user_id', currentUser.id).eq('name', name).single()).data.state, ts: cloudTs };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+        if (name === currentSaveName) {
+          state = JSON.parse(JSON.stringify(saves[name].data));
+          renderSections();
+          loadInfoFields();
+          SECTIONS.forEach(s => updateBadge(s.id));
+        }
+        return;
+      }
+    }
     await supabaseClient.from('inspections').upsert({
       user_id: currentUser.id,
       name: name,
       state: data
     }, { onConflict: 'user_id,name' });
+    // Update local ts to match what the server will set
+    saves[name] = { data: JSON.parse(JSON.stringify(data)), ts: Date.now() };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
   } catch (e) { console.error('Cloud push error:', e); }
 }
 
@@ -459,19 +484,10 @@ async function reconcileOnLoad() {
       for (const cs of cloudSaves) {
         const cloudTs = new Date(cs.updated_at).getTime();
         const local = localSaves[cs.name];
-        if (!local) {
-          // Cloud-only → pull to local
+        if (!local || cloudTs > (local.ts || 0)) {
+          // Cloud is newer (or cloud-only) → accept it
           localSaves[cs.name] = { data: cs.state, ts: cloudTs };
           updated = true;
-        } else if (cloudTs > (local.ts || 0)) {
-          // Cloud is newer → check for conflict on current save
-          if (cs.name === currentSaveName && Object.keys(state.checks).length > 0) {
-            pendingCloudAutosave = cs.state;
-            document.getElementById('conflictBanner').classList.add('visible');
-          } else {
-            localSaves[cs.name] = { data: cs.state, ts: cloudTs };
-            updated = true;
-          }
         }
       }
 
@@ -485,7 +501,7 @@ async function reconcileOnLoad() {
       if (updated) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(localSaves));
         // If current save was updated from cloud, reload it
-        if (currentSaveName && localSaves[currentSaveName] && !pendingCloudAutosave) {
+        if (currentSaveName && localSaves[currentSaveName]) {
           state = JSON.parse(JSON.stringify(localSaves[currentSaveName].data));
           renderSections();
           loadInfoFields();
@@ -506,27 +522,6 @@ async function reconcileOnLoad() {
   }
 }
 
-function loadCloudAutosave() {
-  if (pendingCloudAutosave) {
-    state = pendingCloudAutosave;
-    pendingCloudAutosave = null;
-    const saves = getSaves();
-    if (currentSaveName) {
-      saves[currentSaveName] = { data: JSON.parse(JSON.stringify(state)), ts: Date.now() };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
-    }
-    renderSections();
-    loadInfoFields();
-    SECTIONS.forEach(s => updateBadge(s.id));
-  }
-  document.getElementById('conflictBanner').classList.remove('visible');
-}
-
-function dismissConflict() {
-  pendingCloudAutosave = null;
-  document.getElementById('conflictBanner').classList.remove('visible');
-  cloudSync();
-}
 
 // Handle auth callback (magic link redirect)
 function handleAuthCallback() {

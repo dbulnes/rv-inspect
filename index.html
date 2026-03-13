@@ -323,14 +323,6 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
 .pair-qr canvas, .pair-qr img { border-radius: 8px; }
 .pair-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: var(--text2); font-size: .8rem; }
 .pair-divider::before, .pair-divider::after { content: ''; flex: 1; border-top: 1px solid #2a2a4a; }
-/* Conflict banner */
-.conflict-banner {
-  display: none; margin: 12px; margin-bottom: calc(12px + 70px + env(safe-area-inset-bottom, 0px));
-  padding: 12px; border-radius: var(--radius);
-  background: #2a2a10; border: 1px solid #4a4a1a; font-size: .85rem;
-}
-.conflict-banner.visible { display: block; }
-.conflict-banner-actions { display: flex; gap: 8px; margin-top: 8px; }
 
 /* Toast notifications */
 .toast {
@@ -460,13 +452,6 @@ body:has(.modal-overlay.show), body:has(.confirm-overlay.show), body:has(.lightb
 </div>
 
 <!-- Conflict Banner -->
-<div class="conflict-banner" id="conflictBanner">
-  ☁️ A newer version was found in the cloud.
-  <div class="conflict-banner-actions">
-    <button class="btn btn-accent" onclick="loadCloudAutosave()">Load Cloud Version</button>
-    <button class="btn" onclick="dismissConflict()">Keep Local</button>
-  </div>
-</div>
 
 <!-- Cloud Modal -->
 <div class="modal-overlay" id="cloudModal" onclick="closeCloudModal(event)">
