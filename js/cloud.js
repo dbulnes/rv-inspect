@@ -726,8 +726,9 @@ async function claimPairURL(pairUrl) {
 
     msgEl.className = 'cloud-msg';
     showToast('Device linked!');
-    // Prompt for a display name if not set
     ensureHandle();
+    // Auto-sync after pairing so data appears immediately
+    reconcileOnLoad().then(() => updateCloudUI());
   } catch (e) {
     console.error('Claim error:', e);
     showCloudMsg(msgEl, 'Invalid QR code.', true);
