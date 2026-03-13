@@ -29,6 +29,62 @@ python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
+## Cloud Sync (Optional)
+
+You can optionally sync your inspections across devices using [Supabase](https://supabase.com) (free tier works fine).
+
+### Setup
+
+1. Create a free Supabase project at https://supabase.com
+2. In your Supabase dashboard, go to **SQL Editor** and run this migration:
+
+```sql
+create table inspections (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  state jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id, name)
+);
+
+alter table inspections enable row level security;
+
+create policy "Users CRUD own inspections" on inspections
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Auto-update updated_at on changes
+create or replace function update_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger inspections_updated_at
+  before update on inspections
+  for each row execute function update_updated_at();
+```
+
+3. In Supabase **Authentication > Settings**, make sure Email auth is enabled (magic link is on by default)
+4. In Supabase **Authentication > URL Configuration**, add your app URL (e.g. `https://yourusername.github.io/trailer-checklist`) to the **Redirect URLs**
+5. Open the app, tap the **☁️ button**, expand **Supabase Setup**, and enter:
+   - Your **Project URL** (e.g. `https://xyz.supabase.co`) — found in Settings > API
+   - Your **Anon key** (starts with `eyJ...`) — found in Settings > API
+6. Click **Connect**, then sign in with your email via magic link
+
+Your inspections will now sync across any device where you sign in.
+
+### How it works
+
+- **Offline-first**: localStorage is always the primary store. Cloud sync is a secondary layer.
+- **Auto-sync**: Changes are debounced and pushed to Supabase every 2 seconds when online.
+- **Conflict detection**: If the cloud has a newer version (e.g. from another device), you'll be prompted to load it or keep your local version.
+- **Named saves**: All named saves sync bidirectionally between local and cloud.
+- **Privacy**: Your data lives in YOUR Supabase project. No one else has access.
+
 ## Based On
 
 The checklist is based on the included [Micro Minnie Inspection Checklist.pdf](Micro%20Minnie%20Inspection%20Checklist.pdf), a comprehensive pre-purchase inspection guide for the 2021 Winnebago Micro Minnie 1708FB.
