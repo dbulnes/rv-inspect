@@ -279,7 +279,13 @@ function initSupabase() {
       if (currentUser && !reconcilePromise) {
         reconcilePromise = reconcileOnLoad().finally(() => { reconcilePromise = null; });
       }
-      if (event === 'SIGNED_IN' && currentUser) { ensureHandle(); subscribeRealtime(); }
+      if (event === 'SIGNED_IN' && currentUser) {
+        ensureHandle().then(() => {
+          const h = document.getElementById('handleInput');
+          if (h) h.value = getHandle();
+        });
+        subscribeRealtime();
+      }
       if (event === 'SIGNED_OUT') unsubscribeRealtime();
     });
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -799,7 +805,10 @@ async function claimPairURL(pairUrl) {
 
     msgEl.className = 'cloud-msg';
     showToast('Device linked!');
-    ensureHandle();
+    await ensureHandle();
+    // Update handle input in modal after name is set
+    const handleEl = document.getElementById('handleInput');
+    if (handleEl) handleEl.value = getHandle();
     // Auto-sync after pairing so data appears immediately
     reconcileOnLoad().then(() => updateCloudUI());
   } catch (e) {
