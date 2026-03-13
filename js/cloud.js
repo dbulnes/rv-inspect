@@ -944,6 +944,13 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
 
+// Clean up cache-busting param from force refresh so it doesn't linger in the URL bar
+if (window.location.search.includes('_refresh=')) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('_refresh');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+}
+
 // Version polling — detects new deploys reliably on all platforms (including iOS PWAs)
 // Fetches version.txt (never cached by SW) and force-refreshes if it differs from APP_VERSION.
 async function checkForUpdate() {
@@ -969,7 +976,11 @@ async function forceRefresh() {
     const reg = await navigator.serviceWorker.getRegistration();
     if (reg) await reg.unregister();
   }
-  window.location.reload();
+  // Navigate with cache-busting param to bypass browser HTTP cache on desktop.
+  // Plain reload() only clears SW cache but desktop browsers still serve from disk cache.
+  const url = new URL(window.location.href);
+  url.searchParams.set('_refresh', Date.now());
+  window.location.replace(url.href);
 }
 
 // Event delegation for save slot buttons (attached once)
