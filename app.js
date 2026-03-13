@@ -797,108 +797,117 @@ async function exportPDF() {
   }
 
   const statusPill = (status) => {
-    const map = {
-      ok: { bg: '#e8f5e9', fg: '#2e7d32', label: 'PASS' },
-      issue: { bg: '#fce4ec', fg: '#c62828', label: 'ISSUE' },
-      na: { bg: '#f5f5f5', fg: '#757575', label: 'N/A' },
-      unchecked: { bg: '#fff3e0', fg: '#e65100', label: 'TODO' }
-    };
-    const s = map[status] || map.unchecked;
-    return `<span style="display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:3px;background:${s.bg};color:${s.fg}">${s.label}</span>`;
+    const map = { ok: ['pill-ok','PASS'], issue: ['pill-issue','ISSUE'], na: ['pill-na','N/A'], unchecked: ['pill-todo','TODO'] };
+    const [cls, label] = map[status] || map.unchecked;
+    return `<span class="pill ${cls}">${label}</span>`;
   };
 
-  const progressBar = (stats) => {
+  const sectionProgressBar = (stats) => {
     const pOk = (stats.ok / stats.total * 100).toFixed(1);
     const pIssue = (stats.issue / stats.total * 100).toFixed(1);
     const pNa = (stats.na / stats.total * 100).toFixed(1);
-    return `<div style="display:flex;height:4px;border-radius:2px;overflow:hidden;background:#eee;margin-top:6px">
-      <div style="width:${pOk}%;background:#4caf50"></div>
-      <div style="width:${pIssue}%;background:#ef5350"></div>
-      <div style="width:${pNa}%;background:#bdbdbd"></div>
+    return `<div class="section-progress">
+      <div class="seg-ok" style="width:${pOk}%"></div>
+      <div class="seg-issue" style="width:${pIssue}%"></div>
+      <div class="seg-na" style="width:${pNa}%"></div>
     </div>`;
   };
 
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-  @page { margin: 16mm 14mm; }
+  @page { margin: 18mm 16mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; color: #1a1a1a; line-height: 1.5; max-width: 780px; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11.5px; color: #1d1d1f; line-height: 1.55; max-width: 760px; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-feature-settings: 'cv01', 'cv02', 'ss01'; }
 
   /* Header */
-  .header { border-bottom: 3px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 20px; }
-  .header h1 { font-size: 26px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 8px; }
-  .info-grid { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 11px; color: #555; }
-  .info-grid dt { font-weight: 600; color: #333; }
-  .info-grid dd { margin: 0; }
-  .info-pair { display: flex; gap: 5px; }
+  .header { padding-bottom: 20px; margin-bottom: 22px; border-bottom: 1px solid #d1d1d6; }
+  .header h1 { font-size: 28px; font-weight: 900; letter-spacing: -.8px; color: #000; margin-bottom: 10px; line-height: 1.1; }
+  .info-grid { display: flex; flex-wrap: wrap; gap: 6px 0; }
+  .info-pair { font-size: 11px; color: #6e6e73; display: flex; align-items: center; }
+  .info-pair::after { content: ''; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: #c7c7cc; margin: 0 10px; }
+  .info-pair:last-child::after { display: none; }
+  .info-pair dt { font-weight: 600; color: #48484a; margin-right: 4px; }
+  .info-pair dd { margin: 0; }
 
   /* Stats cards */
-  .stats-row { display: flex; gap: 12px; margin-bottom: 24px; }
-  .stat-card { flex: 1; padding: 12px 14px; border-radius: 8px; text-align: center; }
-  .stat-card .num { font-size: 28px; font-weight: 800; line-height: 1; }
-  .stat-card .label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; margin-top: 4px; }
-  .stat-ok { background: #e8f5e9; color: #2e7d32; }
-  .stat-issue { background: #fce4ec; color: #c62828; }
-  .stat-pending { background: #fff3e0; color: #e65100; }
-  .stat-na { background: #f5f5f5; color: #757575; }
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+  .stat-card { padding: 14px 12px 12px; border-radius: 10px; text-align: center; }
+  .stat-card .num { font-size: 30px; font-weight: 900; line-height: 1; letter-spacing: -1px; }
+  .stat-card .label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; opacity: .75; }
+  .stat-ok { background: #f0faf0; color: #1b7a1b; }
+  .stat-issue { background: #fef2f2; color: #be1d1d; }
+  .stat-pending { background: #fffbf0; color: #b45309; }
+  .stat-na { background: #f5f5f7; color: #86868b; }
 
   /* Overall progress */
-  .progress-wrap { margin-bottom: 24px; }
-  .progress-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #eee; }
-  .progress-bar .ok { background: #4caf50; }
-  .progress-bar .issue { background: #ef5350; }
-  .progress-bar .na { background: #bdbdbd; }
-  .progress-legend { display: flex; gap: 14px; margin-top: 6px; font-size: 10px; color: #777; }
-  .progress-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
-  .legend-ok::before { background: #4caf50; }
-  .legend-issue::before { background: #ef5350; }
-  .legend-pending::before { background: #fff3e0; border: 1px solid #e65100; width: 6px; height: 6px; }
-  .legend-na::before { background: #bdbdbd; }
+  .progress-wrap { margin-bottom: 22px; }
+  .progress-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #f0f0f0; }
+  .progress-bar .seg-ok { background: #34c759; }
+  .progress-bar .seg-issue { background: #ff3b30; }
+  .progress-bar .seg-na { background: #c7c7cc; }
+  .progress-legend { display: flex; gap: 16px; margin-top: 8px; font-size: 10px; color: #86868b; font-weight: 500; }
+  .progress-legend span { display: flex; align-items: center; gap: 5px; }
+  .progress-legend .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 
   /* Issues alert */
-  .issues-alert { background: #fce4ec; border: 1px solid #ef9a9a; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px; page-break-inside: avoid; }
-  .issues-alert h2 { font-size: 14px; font-weight: 700; color: #b71c1c; margin-bottom: 10px; }
-  .issues-alert .issue-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px solid #f8bbd0; }
-  .issues-alert .issue-row:first-of-type { border-top: none; }
-  .issues-alert .issue-section { font-size: 10px; font-weight: 600; color: #c62828; text-transform: uppercase; letter-spacing: .3px; min-width: 100px; padding-top: 1px; }
-  .issues-alert .issue-text { flex: 1; font-size: 12px; }
-  .issues-alert .issue-note { color: #555; font-style: italic; font-size: 11px; }
-  .issues-alert .issue-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .issues-alert .issue-photos img { width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #ef9a9a; }
+  .issues-alert { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 16px 18px; margin-bottom: 22px; }
+  .issues-alert h2 { font-size: 13px; font-weight: 800; color: #991b1b; margin-bottom: 12px; letter-spacing: -.2px; }
+  .issue-row { padding: 8px 0; border-top: 1px solid #fde8e8; display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: start; }
+  .issue-row:first-of-type { border-top: none; padding-top: 0; }
+  .issue-section { font-size: 9.5px; font-weight: 700; color: #b91c1c; text-transform: uppercase; letter-spacing: .5px; padding-top: 2px; }
+  .issue-text { font-size: 11.5px; font-weight: 500; }
+  .issue-note { color: #6e6e73; font-size: 10.5px; margin-top: 2px; }
+  .issue-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .issue-photos img { width: 96px; height: 72px; object-fit: cover; border-radius: 6px; }
 
   /* Assessment */
-  .assessment { background: linear-gradient(135deg, #e3f2fd, #f3e5f5); border-radius: 8px; padding: 16px; margin-bottom: 24px; page-break-inside: avoid; }
-  .assessment h2 { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #1a1a1a; }
-  .assessment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .assessment-item { font-size: 11px; }
-  .assessment-item .a-label { font-weight: 600; color: #555; font-size: 10px; text-transform: uppercase; letter-spacing: .3px; }
-  .assessment-item .a-value { margin-top: 2px; }
+  .assessment { background: #f5f5f7; border-radius: 10px; padding: 18px; margin-bottom: 22px; page-break-inside: avoid; }
+  .assessment h2 { font-size: 13px; font-weight: 800; margin-bottom: 12px; color: #1d1d1f; letter-spacing: -.2px; }
+  .assessment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+  .assessment-item { }
+  .assessment-item .a-label { font-size: 9.5px; font-weight: 700; color: #86868b; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }
+  .assessment-item .a-value { font-size: 12px; font-weight: 500; color: #1d1d1f; line-height: 1.4; }
   .assessment-full { grid-column: 1 / -1; }
 
   /* Section cards */
-  .section { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 14px; overflow: hidden; page-break-inside: avoid; }
-  .section-head { background: #fafafa; padding: 10px 14px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
-  .section-head h3 { font-size: 13px; font-weight: 700; color: #1a1a1a; }
-  .section-counts { display: flex; gap: 8px; font-size: 10px; font-weight: 600; }
-  .section-count { padding: 2px 6px; border-radius: 3px; }
-  .section-body { padding: 6px 0; }
-  .item { display: flex; align-items: flex-start; gap: 10px; padding: 5px 14px; }
+  .section { border: 1px solid #e5e5ea; border-radius: 10px; margin-bottom: 12px; overflow: hidden; page-break-inside: avoid; }
+  .section-head { background: #f5f5f7; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e5ea; }
+  .section-title { }
+  .section-head h3 { font-size: 12.5px; font-weight: 700; color: #1d1d1f; letter-spacing: -.1px; }
+  .section-progress { display: flex; height: 3px; border-radius: 2px; overflow: hidden; background: #e5e5ea; margin-top: 6px; min-width: 80px; }
+  .section-counts { display: flex; gap: 6px; font-size: 9.5px; font-weight: 600; flex-shrink: 0; }
+  .section-count { padding: 2px 7px; border-radius: 4px; }
+  .sc-ok { background: #dcfce7; color: #166534; }
+  .sc-issue { background: #fee2e2; color: #991b1b; }
+  .sc-pending { background: #fef3c7; color: #92400e; }
+  .section-body { }
+  .item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 16px; }
   .item:nth-child(even) { background: #fafafa; }
-  .item-pill { flex-shrink: 0; margin-top: 1px; }
+  .item-pill { flex-shrink: 0; margin-top: 2px; }
+  .pill { display: inline-block; font-size: 8.5px; font-weight: 700; letter-spacing: .5px; padding: 2.5px 8px; border-radius: 4px; text-align: center; min-width: 40px; }
+  .pill-ok { background: #dcfce7; color: #166534; }
+  .pill-issue { background: #fee2e2; color: #991b1b; }
+  .pill-na { background: #f3f4f6; color: #6b7280; }
+  .pill-todo { background: #fef3c7; color: #92400e; }
   .item-content { flex: 1; min-width: 0; }
-  .item-text { font-size: 12px; }
-  .item-critical { font-weight: 700; color: #c62828; }
-  .item-critical::before { content: "\\26A0\\FE0F "; }
-  .item-meta { font-size: 10.5px; color: #666; font-style: italic; margin-top: 1px; }
-  .item-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .item-photos img { width: 110px; height: 82px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; }
+  .item-text { font-size: 11.5px; font-weight: 450; color: #1d1d1f; }
+  .item-critical { font-weight: 600; color: #991b1b; }
+  .item-critical::before { content: "\\26A0 "; color: #dc2626; }
+  .item-meta { font-size: 10px; color: #86868b; margin-top: 2px; line-height: 1.4; }
+  .item-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .item-photos img { width: 110px; height: 82px; object-fit: cover; border-radius: 6px; }
 
   /* Footer */
-  .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 10px; color: #999; text-align: center; }
+  .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e5e5ea; font-size: 9.5px; color: #aeaeb2; text-align: center; font-weight: 500; letter-spacing: .2px; }
 
   @media print {
     body { padding: 0; }
     .section { break-inside: avoid; }
+    .issues-alert { break-inside: avoid; }
+    .assessment { break-inside: avoid; }
   }
 </style></head><body>`;
 
@@ -928,15 +937,15 @@ async function exportPDF() {
     const pNa = (d.stats.na / total * 100).toFixed(1);
     html += `<div class="progress-wrap">
       <div class="progress-bar">
-        <div class="ok" style="width:${pOk}%"></div>
-        <div class="issue" style="width:${pIssue}%"></div>
-        <div class="na" style="width:${pNa}%"></div>
+        <div class="seg-ok" style="width:${pOk}%"></div>
+        <div class="seg-issue" style="width:${pIssue}%"></div>
+        <div class="seg-na" style="width:${pNa}%"></div>
       </div>
       <div class="progress-legend">
-        <span class="legend-ok">Passed ${pOk}%</span>
-        <span class="legend-issue">Issues ${pIssue}%</span>
-        <span class="legend-pending">Pending</span>
-        <span class="legend-na">N/A</span>
+        <span><span class="dot" style="background:#34c759"></span>Passed ${pOk}%</span>
+        <span><span class="dot" style="background:#ff3b30"></span>Issues ${pIssue}%</span>
+        <span><span class="dot" style="background:#fbbf24"></span>Pending</span>
+        <span><span class="dot" style="background:#c7c7cc"></span>N/A</span>
       </div>
     </div>`;
   }
@@ -983,10 +992,10 @@ async function exportPDF() {
   // ---- SECTION CARDS ----
   for (const s of d.sections) {
     const st = sectionStats(s);
-    html += `<div class="section"><div class="section-head"><div><h3>${escHtml(s.title)}</h3>${progressBar(st)}</div><div class="section-counts">`;
-    if (st.ok) html += `<span class="section-count" style="background:#e8f5e9;color:#2e7d32">${st.ok} pass</span>`;
-    if (st.issue) html += `<span class="section-count" style="background:#fce4ec;color:#c62828">${st.issue} issue</span>`;
-    if (st.pending) html += `<span class="section-count" style="background:#fff3e0;color:#e65100">${st.pending} todo</span>`;
+    html += `<div class="section"><div class="section-head"><div class="section-title"><h3>${escHtml(s.title)}</h3>${sectionProgressBar(st)}</div><div class="section-counts">`;
+    if (st.ok) html += `<span class="section-count sc-ok">${st.ok} pass</span>`;
+    if (st.issue) html += `<span class="section-count sc-issue">${st.issue} issue</span>`;
+    if (st.pending) html += `<span class="section-count sc-pending">${st.pending} todo</span>`;
     html += '</div></div><div class="section-body">';
     for (const it of s.items) {
       html += `<div class="item"><div class="item-pill">${statusPill(it.status)}</div><div class="item-content">`;
@@ -1016,11 +1025,13 @@ async function exportPDF() {
   if (!printWin) { showToast('Please allow popups to export PDF', true); return; }
   printWin.document.write(html);
   printWin.document.close();
+  // Wait for fonts and images to load before printing
   const images = printWin.document.querySelectorAll('img');
-  const loaded = images.length ? Promise.all(Array.from(images).map(img =>
+  const imgLoaded = images.length ? Promise.all(Array.from(images).map(img =>
     img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
   )) : Promise.resolve();
-  await loaded;
+  const fontLoaded = printWin.document.fonts ? printWin.document.fonts.ready : Promise.resolve();
+  await Promise.all([imgLoaded, fontLoaded]);
   showToast('Opening print dialog…', false, 3000);
   printWin.print();
 }
