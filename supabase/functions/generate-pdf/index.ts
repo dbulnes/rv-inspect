@@ -348,18 +348,22 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    await adminClient.storage
+    const { error: uploadError } = await adminClient.storage
       .from(BUCKET)
-      .upload(storagePath, pdfBytes, {
+      .upload(storagePath, new Blob([pdfBytes], { type: "application/pdf" }), {
         contentType: "application/pdf",
         upsert: true,
       });
 
-    const {
-      data: { signedUrl },
-    } = await adminClient.storage
-      .from(BUCKET)
-      .createSignedUrl(storagePath, 3600); // 1 hour
+    let signedUrl = "";
+    if (uploadError) {
+      console.error("Storage upload error:", uploadError);
+    } else {
+      const { data } = await adminClient.storage
+        .from(BUCKET)
+        .createSignedUrl(storagePath, 3600);
+      signedUrl = data?.signedUrl || "";
+    }
 
     return new Response(pdfBytes, {
       headers: {
